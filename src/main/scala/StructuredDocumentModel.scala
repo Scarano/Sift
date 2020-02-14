@@ -119,7 +119,7 @@ object DocumentLattice {
 		val mergeMask = Array.fill(tokens.length) { true }
 		for (r <- ruleStrings.indices) {
 			val occurrences = ruleOccurrences(r)
-			if (occurrences.size > mergeThreshold) { // TODO should this use >= to be consistent with below?
+			if (occurrences.size >= mergeThreshold) {
 				val str = ruleStrings(r).stripSuffix(" ")
 				val len = str.count(_ == ' ') + 1
 				logger.debug(s"Rule $str")
