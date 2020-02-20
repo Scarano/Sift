@@ -103,12 +103,13 @@ object DocumentLattice {
 			yield pos
 	}
 
-	def fromGrammar(tokens: IndexedSeq[String], rules: GrammarRules, minFreq: Int = 1,
+	def fromGrammar(tokens: IndexedSeq[String], rules: GrammarRules, minFreq: Int = 2,
 	                mergeThresholdPercentile: Double = 0.75)
 	: DocumentLattice[String] = {
 		val arcs = Array.fill(tokens.length) {List.empty[Arc[String]]}
-		val ruleStrings = rules.iterator.asScala.toArray map { _.getExpandedRuleString }
+		val ruleStrings = rules.iterator.asScala.toArray map { _.getExpandedRuleString.stripSuffix(" ") }
 		val ruleOccurrences = ruleStrings map { findOccurrences(tokens, _) }
+		val ruleLengths = ruleStrings map { str => str.count(_ == ' ') + 1 }
 
 		println(ruleOccurrences.map(_.size).sorted.mkString("\n"))
 		val calculatedMergeThreshold = ruleOccurrences.map(_.size).sorted
@@ -116,15 +117,18 @@ object DocumentLattice {
 		val mergeThreshold = max(minFreq, calculatedMergeThreshold)
 		println(s"mergeThreshold = $mergeThreshold")
 
+		val bestRuleLen = Array.fill(tokens.length) { 0 }
 		val mergeMask = Array.fill(tokens.length) { true }
 		for (r <- ruleStrings.indices) {
 			val occurrences = ruleOccurrences(r)
 			if (occurrences.size >= mergeThreshold) {
-				val str = ruleStrings(r).stripSuffix(" ")
-				val len = str.count(_ == ' ') + 1
+				val str = ruleStrings(r)
+				val len = ruleLengths(r)
 				logger.debug(s"Rule $str")
 				for (occIndex: Int ← occurrences)
 					for (i <- occIndex until occIndex + len) {
+						if (len > bestRuleLen(i))
+							bestRuleLen(i) = len
 						mergeMask(i) = false
 //						logger.debug(s"  mergeMask($i) = false")
 					}
@@ -136,12 +140,13 @@ object DocumentLattice {
 //			logger.debug(rule.getRuleString)
 			val occurrences = ruleOccurrences(r)
 			if (occurrences.size >= minFreq) {
-				val str = ruleStrings(r).stripSuffix(" ")
-				val len = str.count(_ == ' ') + 1
+				val str = ruleStrings(r)
+				val len = ruleLengths(r)
 				for (occIndex: Int ← occurrences) {
-					val qualifies = mergeMask(occIndex) || occurrences.size >= mergeThreshold
-//					logger.debug(s"  $qualifies: $occIndex -> ${occIndex+len}: $str")
-					if (mergeMask(occIndex) || occurrences.size >= mergeThreshold)
+					val qualifies = len >= bestRuleLen(occIndex)
+					logger.debug(s"  $qualifies: $occIndex -> ${occIndex+len}: $str")
+//					if (mergeMask(occIndex) || occurrences.size >= mergeThreshold)
+					if (qualifies)
 						arcs(occIndex) ::= Arc(str, occIndex + len)
 				}
 			}
@@ -765,11 +770,11 @@ object StructuredDocumentModel {
 	def main(args: Array[String]): Unit = {
 //		multiTest(args(0).toInt, List(DocumentLattice.examples(2))); return
 //		demo(); return
-		problemExample3(); return
+//		problemExample3(); return
 
 		val input = if (args.length > 0) args(0) else "b a n a n a"
 		val numStates = if (args.length > 1) args(1).toInt else 5
-		val minFreq = if (args.length > 2) args(2).toInt else 5
+		val minFreq = if (args.length > 2) args(2).toInt else 2
 
 		val rawText = if (input(0) == '@') {
 			val source = Source.fromFile(input.substring(1))
