@@ -27,6 +27,8 @@ mainClass in (Compile, run) := Some("TreeSandbox")
 // Copy "resources" to target directory
 resourceDirectory in Compile := file("resources")
 
+fork in run := true
+
 
 ////////////////
 // From http://ammonite.io/#Ammonite-REPL

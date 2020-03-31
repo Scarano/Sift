@@ -3,11 +3,6 @@ import breeze.numerics._
 import breeze.stats.distributions.{Rand, RandBasis}
 import com.typesafe.scalalogging.Logger
 
-//import net.seninp.gi.logic.{GrammarRuleRecord, GrammarRules}
-//import net.seninp.gi.sequitur.{SAXRule, SequiturFactory}
-import gi.logic.{GrammarRuleRecord, GrammarRules}
-import gi.sequitur.{SAXRule, SequiturFactory}
-
 import scala.collection.JavaConverters._
 import scala.annotation.tailrec
 import scala.io.Source
@@ -53,31 +48,6 @@ case class DocumentLattice[SYM](arcs: Array[List[Arc[SYM]]]) {
 object DocumentLattice {
 	val logger = Logger("DocumentLattice")
 
-	def fromGrammar_occurrence_bug(tokens: IndexedSeq[String], rules: GrammarRules)
-	: DocumentLattice[String] = {
-		val arcs = Array.fill(tokens.length) {List.empty[Arc[String]]}
-
-		for (rule: GrammarRuleRecord ← rules.iterator.asScala) {
-			logger.debug("_________")
-			logger.debug(rule.getRuleString)
-//			val occurrences = if (rule.getRuleNumber == 0) List(0)
-//			                  else rule.getOccurrences.iterator.asScala
-			val occurrences = rule.getOccurrences.iterator.asScala
-			for (occIndex: Integer ← occurrences) {
-				val str = rule.getExpandedRuleString.stripSuffix(" ")
-				val len = str.count(_ == ' ') + 1
-				val arc = Arc(str, occIndex + len)
-				logger.debug(s"  from $occIndex: $arc")
-				arcs(occIndex) ::= Arc(str, occIndex + len)
-			}
-		}
-
-		for ((token, occIndex) ← tokens.zipWithIndex)
-			arcs(occIndex) ::= Arc(token, occIndex + 1)
-
-		DocumentLattice(arcs)
-	}
-
 	def parseRule(ruleString: String): Array[Either[String, Int]] = {
 		for (tok ← ruleString.split(" "))
 			yield """^R(\d+)$""".r.findAllMatchIn(tok).toList match {
@@ -103,44 +73,50 @@ object DocumentLattice {
 			yield pos
 	}
 
-	def fromGrammar(tokens: IndexedSeq[String], rules: GrammarRules, minFreq: Int = 2,
+	def fromGrammar(tokens: IndexedSeq[String], grammar: SequiturGrammar, minFreq: Int = 2,
 	                mergeThresholdPercentile: Double = 0.75)
 	: DocumentLattice[String] = {
-		val arcs = Array.fill(tokens.length) {List.empty[Arc[String]]}
-		val ruleStrings = rules.iterator.asScala.toArray map { _.getExpandedRuleString.stripSuffix(" ") }
-		val ruleOccurrences = ruleStrings map { findOccurrences(tokens, _) }
-		val ruleLengths = ruleStrings map { str => str.count(_ == ' ') + 1 }
+		val rules = grammar.rules
 
-		println(ruleOccurrences.map(_.size).sorted.mkString("\n"))
-		val calculatedMergeThreshold = ruleOccurrences.map(_.size).sorted
-				.apply((mergeThresholdPercentile*ruleOccurrences.length).toInt)
+		val arcs = Array.fill(tokens.length) {List.empty[Arc[String]]}
+
+		val ruleOccurrences = rules map { _.occurrences }
+		val ruleLengths = rules map { _.length }
+//		val ruleLengths = ruleStrings map { str => str.count(_ == ' ') + 1 }
+
+		println(rules.map(_.freq).sorted.mkString("\n"))
+		val occurrenceCounts = ruleOccurrences.map(_.length).sorted
+		val calculatedMergeThreshold = occurrenceCounts(
+			(mergeThresholdPercentile*ruleOccurrences.length).toInt)
 		val mergeThreshold = max(minFreq, calculatedMergeThreshold)
 		println(s"mergeThreshold = $mergeThreshold")
 
 		val bestRuleLen = Array.fill(tokens.length) { 0 }
 		val mergeMask = Array.fill(tokens.length) { true }
-		for (r <- ruleStrings.indices) {
+		for (r <- rules.indices) {
 			val occurrences = ruleOccurrences(r)
-			if (occurrences.size >= mergeThreshold) {
-				val str = ruleStrings(r)
+			if (occurrences.length >= mergeThreshold) {
+				val str = rules(r).toString
 				val len = ruleLengths(r)
-				logger.debug(s"Rule $str")
+				logger.debug(s"Rule R$r (occ: $occurrences) [$str]")
 				for (occIndex: Int ← occurrences)
 					for (i <- occIndex until occIndex + len) {
-						if (len > bestRuleLen(i))
+						if (len > bestRuleLen(i)) {
 							bestRuleLen(i) = len
+//							logger.debug(s"  bestRuleLen($i) = $len")
+						}
 						mergeMask(i) = false
 //						logger.debug(s"  mergeMask($i) = false")
 					}
 			}
 		}
 
-		for (r <- ruleStrings.indices) {
+		for (r <- rules.indices) {
 //			logger.debug("_________")
 //			logger.debug(rule.getRuleString)
 			val occurrences = ruleOccurrences(r)
-			if (occurrences.size >= minFreq) {
-				val str = ruleStrings(r)
+			if (occurrences.length >= minFreq) {
+				val str = rules(r).toString
 				val len = ruleLengths(r)
 				for (occIndex: Int ← occurrences) {
 					val qualifies = len >= bestRuleLen(occIndex)
@@ -152,8 +128,36 @@ object DocumentLattice {
 			}
 		}
 
+		// Add single-token arcs whereever we don't have high-confidence multi-token arcs
 		for ((token, occIndex) ← tokens.zipWithIndex if mergeMask(occIndex))
 			arcs(occIndex) ::= Arc(token, occIndex + 1)
+
+		// Sometimes we remove too many arcs and leave the lattice without a single path from
+		// start to end. This can always be fixed by adding in single-token arcs to any un-connected
+		// ends of existing arcs.
+		var targets = (for (arcsFrom <- arcs; arc <- arcsFrom) yield arc.target).toSet
+
+		for (start <- arcs.indices) {
+			if (arcs(start).nonEmpty) {
+				var u = start
+				while (u > 0 && !targets.contains(u)) {
+					logger.debug(s"Adding singleton arc into $u")
+					arcs(u - 1) ::= Arc(tokens(u - 1), u)
+					targets ++= Set(u)
+					u -= 1
+				}
+			}
+
+			for (arc <- arcs(start)) {
+				var t = arc.target
+				while (t < tokens.length - 1 && arcs(t).isEmpty) {
+					logger.debug(s"Adding singleton arc from $t")
+					arcs(t) ::= Arc(tokens(t), t + 1)
+					targets ++= Set(t + 1)
+					t += 1
+				}
+			}
+		}
 
 		DocumentLattice(arcs)
 	}
@@ -717,11 +721,10 @@ object StructuredDocumentModel {
 		"""
 		val tokenize = new Tokenizer
 		val tokens = tokenize(rawText.toLowerCase).toArray
-		val text = tokens.mkString(" ")
-		val rule = SequiturFactory.runSequitur(text)
-		println(SAXRule.printRules)
+		val grammar = SequiturGrammar(tokens)
+		println("Warning: this hasn't been tested since refactor on 2020-03-31")
 
-		val doc = DocumentLattice.fromGrammar(tokens, rule.toGrammarRulesData, minFreq, 0.6)
+		val doc = DocumentLattice.fromGrammar(tokens, grammar, minFreq, 0.6)
 		println(doc.mkString())
 
 		val docs = List(doc)
@@ -784,12 +787,11 @@ object StructuredDocumentModel {
 
 		val tokenize = new Tokenizer
 		val tokens = tokenize(rawText.toLowerCase).toArray
-		val text = tokens.mkString(" ")
-		val rule = SequiturFactory.runSequitur(text)
-		println(SAXRule.printRules)
+		val grammar = SequiturGrammar(tokens)
 
-		val doc = DocumentLattice.fromGrammar(tokens, rule.toGrammarRulesData, minFreq, 0.6)
+		val doc = DocumentLattice.fromGrammar(tokens, grammar, minFreq, 0.6)
 		println(doc.mkString())
+//		return // just test DocumentLattice.fromGrammar
 
 		val docs = List(doc)
 
