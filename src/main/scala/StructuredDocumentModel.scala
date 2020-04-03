@@ -73,8 +73,20 @@ object DocumentLattice {
 			yield pos
 	}
 
-	def fromGrammar(tokens: IndexedSeq[String], grammar: SequiturGrammar, minFreq: Int = 2,
-	                mergeThresholdPercentile: Double = 0.75)
+	def fromStringGrammar(grammar: StringGrammar,
+	                      allowThreshold: Double, enforceThreshold: Double, alpha: Double)
+	: DocumentLattice[String] = {
+		val arcs = Array.fill(grammar.tokens.length) {List.empty[Arc[String]]}
+		for ((source, target, str) <- grammar.root.arcs(allowThreshold, enforceThreshold, alpha)
+		                                if target - source < grammar.tokens.length // exclude root
+    ) {
+			arcs(source) ::= Arc(str, target)
+		}
+		DocumentLattice(arcs)
+	}
+
+	def fromSequiturGrammar(tokens: IndexedSeq[String], grammar: SequiturGrammar, minFreq: Int = 2,
+	                        mergeThresholdPercentile: Double = 0.75)
 	: DocumentLattice[String] = {
 		val rules = grammar.rules
 
@@ -555,8 +567,10 @@ case class ViterbiChart[SYM](
 			     arcStr = abbreviate(doc.arcMap(t, u).sym.toString, 20))
 				yield
 					f"${-cost}%10.1f " +
-					f"$t%4d -> $u%4d " +
-					f"${model.stateNames(i)}%17s -> ${model.stateNames(j)}%17s " +
+//					f"$t%4d -> $u%4d " +
+					f"$t%4d " +
+//					f"${model.stateNames(i)}%17s -> ${model.stateNames(j)}%17s " +
+					f"${model.stateNames(i)}%17s " +
 					s"'$arcStr'"
 		transitionStrings.mkString("\n")
 	}
@@ -724,7 +738,7 @@ object StructuredDocumentModel {
 		val grammar = SequiturGrammar(tokens)
 		println("Warning: this hasn't been tested since refactor on 2020-03-31")
 
-		val doc = DocumentLattice.fromGrammar(tokens, grammar, minFreq, 0.6)
+		val doc = DocumentLattice.fromSequiturGrammar(tokens, grammar, minFreq, 0.6)
 		println(doc.mkString())
 
 		val docs = List(doc)
@@ -777,7 +791,9 @@ object StructuredDocumentModel {
 
 		val input = if (args.length > 0) args(0) else "b a n a n a"
 		val numStates = if (args.length > 1) args(1).toInt else 5
-		val minFreq = if (args.length > 2) args(2).toInt else 2
+		val allowThreshold = if (args.length > 2) args(2).toDouble else 0.2
+		val enforceThreshold = if (args.length > 3) args(3).toDouble else 0.8
+		val alpha = if (args.length > 4) args(4).toDouble else 1.0
 
 		val rawText = if (input(0) == '@') {
 			val source = Source.fromFile(input.substring(1))
@@ -787,9 +803,11 @@ object StructuredDocumentModel {
 
 		val tokenize = new Tokenizer
 		val tokens = tokenize(rawText.toLowerCase).toArray
-		val grammar = SequiturGrammar(tokens)
+//		val grammar = SequiturGrammar(tokens)
+		val grammar = SequiturGrammar(tokens).toStringGrammar
 
-		val doc = DocumentLattice.fromGrammar(tokens, grammar, minFreq, 0.6)
+//		val doc = DocumentLattice.fromSequiturGrammar(tokens, grammar, minFreq, 0.6)
+		val doc = DocumentLattice.fromStringGrammar(grammar, allowThreshold, enforceThreshold, alpha)
 		println(doc.mkString())
 //		return // just test DocumentLattice.fromGrammar
 
