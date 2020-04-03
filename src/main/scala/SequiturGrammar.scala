@@ -46,17 +46,25 @@ object StringGrammar {
 			case None => (children map { _.toString }).mkString(" ")
 		}
 
-		def mkString(alpha: Double = 1.0, sep: String = "\n", level: Int = 0): String = {
-			val indent = "  " * level
-			val childStrings = for (child <- children if child.length > 1) yield {
-				child.mkString(alpha, sep, level+1)
+		def mkString(alpha: Double = 1.0, sep: String = "\n", level: Int = 0,
+		             enforceThreshold: Double = 1.0)
+		: String	= {
+			val indent = "| " * level
+			val score = correlationScore(alpha)
+			val str = f"$indent(${occurrences.length}; $score%1.2f) ${abbreviate(toString, 100)}"
+			if (score >= enforceThreshold) {
+				return str
 			}
-			f"$indent (${correlationScore(alpha)}%1.2f) ${abbreviate(toString, 60)}" + sep +
-				childStrings.mkString(sep)
+			else {
+				val childStrings = for (child <- children if child.length > 1) yield {
+					child.mkString(alpha, sep, level+1, enforceThreshold)
+				}
+				str + sep + childStrings.mkString(sep)
+			}
 		}
 
 		// Note: This is recomputed redundantly. But probably not a performance issue?
-		def correlationScore(alpha: Double): Double = {
+		def correlationScore(alpha: Double = 1.0): Double = {
 			if (children.isEmpty)
 				return 1.0
 			val minChildFreq = children.map(_.freq).reduce(Math.min)
@@ -228,6 +236,7 @@ object SequiturGrammar {
 
 	def main(args: Array[String]): Unit = {
 		val input = if (args.length > 0) args(0) else "b a n a n a"
+		val enforceThreshold = if (args.length > 1) args(1).toDouble else 0.8
 
 		val rawText = if (input(0) == '@') {
 			val source = Source.fromFile(input.substring(1))
@@ -249,7 +258,7 @@ object SequiturGrammar {
 		}
 
 		val grammar = sequiturGrammar.toStringGrammar
-		println(grammar.root.mkString(1.0))
+		println(grammar.root.mkString(alpha = 1.0, enforceThreshold = enforceThreshold))
 
 	}
 }

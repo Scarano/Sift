@@ -564,7 +564,7 @@ case class ViterbiChart[SYM](
 		val transitionStrings =
 			for (((t, i), (u, j)) <- bestPath zip bestPath.tail;
 		       cost = bestCost(u, j) - bestCost(t, i);
-			     arcStr = abbreviate(doc.arcMap(t, u).sym.toString, 20))
+			     arcStr = abbreviate(doc.arcMap(t, u).sym.toString, 80))
 				yield
 					f"${-cost}%10.1f " +
 //					f"$t%4d -> $u%4d " +
