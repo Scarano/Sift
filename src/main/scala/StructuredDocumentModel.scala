@@ -1,3 +1,4 @@
+import DataGenerator.simpleItems
 import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.distributions.{Rand, RandBasis}
@@ -7,8 +8,9 @@ import scala.collection.JavaConverters._
 import scala.annotation.tailrec
 import scala.io.Source
 import scala.reflect.ClassTag
-
 import Util.abbreviate
+
+import scala.util.Random
 
 case class Arc[SYM](sym: SYM, target: Int)
 
@@ -799,7 +801,18 @@ object StructuredDocumentModel {
 			val source = Source.fromFile(input.substring(1))
 			try source.getLines.mkString(" ") finally source.close
 		}
-		else input
+		else if (input.startsWith("simpleItems(")) {
+			val params = """simpleItems\((\d+), *(\d+), *(\d+), *(\d+)\)""".r
+			val pcfg = input match {
+				case params(size, prefixLength, descLength, descVocabSize) =>
+					simpleItems(size.toInt, prefixLength.toInt, descLength.toInt, descVocabSize.toInt)
+				case _ =>
+					throw new Exception(s"Wrong format for simpleItems parameters: $input")
+			}
+			pcfg.generate(new Random(0)).mkString(" ")
+		}
+		else
+			input
 
 		val tokenize = new Tokenizer
 		val tokens = tokenize(rawText.toLowerCase).toArray
