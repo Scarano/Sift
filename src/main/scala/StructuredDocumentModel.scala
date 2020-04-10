@@ -1,4 +1,6 @@
 import DataGenerator.simpleItems
+import DataGenerator.multiFieldItems
+
 import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.distributions.{Rand, RandBasis}
@@ -806,6 +808,16 @@ object StructuredDocumentModel {
 			val pcfg = input match {
 				case params(size, prefixLength, descLength, descVocabSize) =>
 					simpleItems(size.toInt, prefixLength.toInt, descLength.toInt, descVocabSize.toInt)
+				case _ =>
+					throw new Exception(s"Wrong format for simpleItems parameters: $input")
+			}
+			pcfg.generate(new Random(0)).mkString(" ")
+		}
+		else if (input.startsWith("multiFieldItems(")) {
+			val params = """multiFieldItems\((\d+)\)""".r
+			val pcfg = input match {
+				case params(size) =>
+					DataGenerator.multiFieldItems(size.toInt, (2, 10), (5, 20), (10, 20))
 				case _ =>
 					throw new Exception(s"Wrong format for simpleItems parameters: $input")
 			}

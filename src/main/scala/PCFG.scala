@@ -12,7 +12,7 @@ case class PCFG(prods: Map[String, Seq[Prod]], start: String) {
 object PCFG {
 	sealed trait Node
 	case class Term(s: String) extends Node
-	case class Nonterm(name: String, prods: List[(Double, List[Node])])
+	case class Nonterm(name: String, children: List[Node]) extends Node
 
 	case class Prod(lhs: String, p: Double, rhs: Seq[String]) {
 		@tailrec
