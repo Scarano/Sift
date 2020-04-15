@@ -6,24 +6,49 @@ import scala.util.Random
 
 
 case class PCFG(prods: Map[String, Seq[Prod]], start: String) {
+	// TODO: Reimplement in terms of generateTree?
 	def generate(rand: Random): Seq[String] = prods(start).head.generate(this, rand)
+
+	def generateTree(rand: Random): Node = generateTree(start, rand)
+	def generateTree(sym: String, rand: Random): Node = prods.get(sym) match {
+		case None => Term(sym)
+		case Some(prodDist) => {
+			val prod = chooseUniform(prodDist, rand.nextDouble())
+			Nonterm(sym, prod.rhs.map { generateTree(_, rand) })
+		}
+	}
 }
 
 object PCFG {
-	sealed trait Node
-	case class Term(s: String) extends Node
-	case class Nonterm(name: String, children: List[Node]) extends Node
+	sealed trait Node {
+		def walk[A](acc: A, ancestors: List[Nonterm] = List.empty)(f: (A, Term, List[Nonterm]) => A): A
+	}
+	case class Term(s: String) extends Node {
+		override def toString: String = s
+
+		def walk[A](acc: A, ancestors: List[Nonterm])(f: (A, Term, List[Nonterm]) => A): A = {
+			f(acc, this, ancestors)
+		}
+	}
+	case class Nonterm(name: String, children: Seq[Node]) extends Node {
+		override def toString: String = s"$name( ${children.mkString(" ")} )"
+
+		override def walk[A](acc: A, ancestors: List[Nonterm])(f: (A, Term, List[Nonterm]) => A): A = {
+			val anc1 = this :: ancestors
+			children.foldLeft(acc) { (acc1, child) => child.walk(acc1, anc1)(f) }
+		}
+	}
+
+	@tailrec
+	// TODO: This is the lazy, non-efficient implementation of uniform sampling
+	private def chooseUniform(options: Seq[Prod], chooseAt: Double): Prod = {
+		if (options.tail.isEmpty || chooseAt < options.head.p)
+			options.head
+		else
+			chooseUniform(options.tail, chooseAt - options.head.p)
+	}
 
 	case class Prod(lhs: String, p: Double, rhs: Seq[String]) {
-		@tailrec
-		// TODO: This is the lazy, non-efficient implementation of uniform sampling
-		private def chooseUniform(options: Seq[Prod], chooseAt: Double): Prod = {
-			if (options.tail.isEmpty || chooseAt < options.head.p)
-				options.head
-			else
-				chooseUniform(options.tail, chooseAt - options.head.p)
-		}
-
 		def generate(pcfg: PCFG, rand: Random): Vector[String] = {
 			rhs.flatMap { x =>
 				pcfg.prods.get(x) match {
@@ -69,7 +94,13 @@ object PCFG {
 
 	def main(args: Array[String]): Unit = {
 		for (i <- 0 to 19) {
-			println(example.generate(new Random(i)).mkString(" "))
+//			println(example.generate(new Random(i)).mkString(" "))
+			val tree = example.generateTree(new Random(i))
+			println(tree)
+			val pairs = tree.walk(Vector.empty[(Term, Nonterm)]) {
+				(acc, term, anc) => acc :+ (term, anc.head)
+			}
+			println(pairs map { case (term, parent) => s"[${parent.name}] $term"} mkString " ")
 		}
 	}
 }
