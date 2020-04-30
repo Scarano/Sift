@@ -6,7 +6,7 @@ case class LabeledDoc(tokens: Array[String], labels: Array[Option[Int]], labelNa
 object LabeledDoc {
 	sealed trait ReadState
 	case object Unlabeled extends ReadState
-	case object Label extends ReadState
+	case class Label(labelTokens: List[String]) extends ReadState
 	case class Labeled(label: Int) extends ReadState
 
 	def apply(tokens: Array[String], labels: Array[Option[Int]], labelNames: Array[String],
@@ -32,18 +32,23 @@ object LabeledDoc {
 			currentState match {
 				case Unlabeled =>
 					if (token == "❲")
-						currentState = Label
+						currentState = Label(Nil)
 					else {
 						tokenBuffer += token
 						labelBuffer += None
 					}
-				case Label =>
-					val label = labelMap.getOrElseUpdate(token, labelMap.size)
-					currentState = Labeled(label)
+				case Label(labelTokens) =>
+					if (token == "❳") {
+						val labelString = labelTokens.reverse.mkString("")
+						val label = labelMap.getOrElseUpdate(labelString, labelMap.size)
+						currentState = Labeled(label)
+					}
+					else
+						currentState = Label(token :: labelTokens)
 				case Labeled(label) =>
 					if (token == "❯")
 						currentState = Unlabeled
-					else if (token != "❳" && token != "❮") {
+					else if (token != "❮") {
 						tokenBuffer += token
 						labelBuffer += Some(label)
 					}
