@@ -1,7 +1,9 @@
-import PCFG.Prod
+import PCFG.{Prod, Term}
 import breeze.linalg.DenseVector
 import breeze.linalg.sum
+import breeze.util.OptionIndex
 
+import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
 class DataGenerator {
@@ -15,12 +17,12 @@ object DataGenerator {
 	def simpleItems(size: Int, prefixLength: Int, descLength: Int, descVocabSize: Int)
 	: PCFG	= {
 		val list = ("LIST", 1.0, repeat("ITEM", size))
-		val item = ("ITEM", 1.0, "\n PREFIX DESC")
+		val item = ("ITEM", 1.0, "PREFIX DESC")
 		val prefix = ("PREFIX", 1.0, (1 to prefixLength).map(k => s"p$k").mkString(" "))
-		val desc = ("DESC", 1.0, repeat("DESCITEM", descLength))
+		val desc = ("DESC", 1.0, repeat("DESCWORD", descLength))
 		val descDist = DenseVector.tabulate(descVocabSize) { k => Math.pow(k+1, -0.5) }
 		descDist /= sum(descDist)
-		val descWords = (1 to descVocabSize) map { k => ("DESCITEM", descDist(k-1), s"d$k") }
+		val descWords = (1 to descVocabSize) map { k => ("DESCWORD", descDist(k-1), s"d$k") }
 
 		PCFG(Vector(list, item, prefix, desc) ++ descWords : _*)
 	}
@@ -28,7 +30,7 @@ object DataGenerator {
 	def multiFieldItems(size: Int, fieldParams: (Int, Int)*): PCFG = {
 		val list = ("LIST", 1.0, repeat("ITEM", size))
 		val item = ("ITEM", 1.0,
-		            "\n " + (1 to fieldParams.length).map("FIELD" + _.toString).mkString(" "))
+		            "item " + (1 to fieldParams.length).map("FIELD" + _.toString).mkString(" "))
 
 		val fieldWordPairs: Seq[Vector[(String, Double, String)]] =
 			for (((fieldLength, fieldVocabSize), fieldNum) <- fieldParams.zipWithIndex) yield {
@@ -48,10 +50,30 @@ object DataGenerator {
 		PCFG(prodSpecs: _*)
 	}
 
+
+	def generateLabeledDoc(pcfg: PCFG, includedLabels: Seq[String], labelCoverage: Double,
+	                       rand: Random)
+	: LabeledDoc = {
+		val labelMap = includedLabels.zipWithIndex.toMap
+		val tokenBuffer = ArrayBuffer.empty[String]
+		val labelBuffer = ArrayBuffer.empty[Option[Int]]
+		pcfg.generateTree(rand).walk(()) {
+			case (_, Term(s), nonterms) =>
+				tokenBuffer += s
+				labelBuffer += labelMap.get(nonterms.head.name)
+		}
+		LabeledDoc(tokenBuffer.toArray, labelBuffer.toArray, includedLabels.toArray, labelCoverage)
+	}
+
+
 	def main(args: Array[String]): Unit = {
 		val rand = new Random(args(0).toInt)
 //		val pcfg = simpleItems(10, 3, 20, 20)
 		val pcfg = multiFieldItems(20, (2, 10), (5, 20), (10, 20))
-		println(pcfg.generate(rand).mkString(" "))
+//		println(pcfg.generate(rand).mkString(" "))
+		val leafPathPairs = pcfg.generateTree(rand).leafPathPairs
+		val leafParentPairs = for ((Term(s), nonterms) <- leafPathPairs)
+			yield s"$s/${nonterms.head.name}"
+		println(leafParentPairs.mkString(" "))
 	}
 }

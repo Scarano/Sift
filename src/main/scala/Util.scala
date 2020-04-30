@@ -7,4 +7,8 @@ object Util {
 			s.substring(0, split) + ellipsis + s.substring(s.length - (maxLen - split) + 1)
 		}
 	}
+	def printToFile(f: java.io.File)(op: java.io.PrintWriter => Unit) {
+	  val p = new java.io.PrintWriter(f)
+	  try { op(p) } finally { p.close() }
+	}
 }

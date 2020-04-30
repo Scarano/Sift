@@ -1,6 +1,8 @@
+import java.io.File
+
 import DataGenerator.simpleItems
 import DataGenerator.multiFieldItems
-
+import PCFG.Term
 import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.distributions.{Rand, RandBasis}
@@ -12,11 +14,17 @@ import scala.io.Source
 import scala.reflect.ClassTag
 import Util.abbreviate
 
+import scala.collection.mutable
 import scala.util.Random
 
-case class Arc[SYM](sym: SYM, target: Int)
+abstract class AArc[SYM] {
+	val sym: SYM
+	val target: Int
+}
+case class Arc[SYM](sym: SYM, target: Int) extends AArc[SYM]
+case class LabeledArc[SYM](sym: SYM, target: Int, label: Int) extends AArc[SYM]
 
-case class DocumentLattice[SYM](arcs: Array[List[Arc[SYM]]]) {
+case class DocumentLattice[SYM](arcs: Array[List[AArc[SYM]]]) {
 	/**
 		* If arcs(a)(j) == Arc(s, b) for some j, then there is an arc from node position a to node
 		* position b that emits s.
@@ -32,9 +40,14 @@ case class DocumentLattice[SYM](arcs: Array[List[Arc[SYM]]]) {
 	val nodes: Range = 0 to finalNode
 	val nonfinalNodes: Range = 0 until finalNode
 
-	/** A map from (source_node, target_node) to the [[Arc]]. Not all key pairs are necessarily
-		* populated. But if populated, there is one unique [[Arc]]. */
-	val arcMap: Map[(Int, Int), Arc[SYM]] = (
+	val labels: Array[Integer] = arcs map {
+		case LabeledArc(_, _, label) :: _ => Integer.valueOf(label)
+		case _ => null
+	}
+
+	/** A map from (source_node, target_node) to the [[AArc]]. Not all key pairs are necessarily
+		* populated. But if populated, there is one unique [[AArc]]. */
+	val arcMap: Map[(Int, Int), AArc[SYM]] = (
 		for (
 			source <- nonfinalNodes;
 			arc <- arcs(source)
@@ -44,7 +57,10 @@ case class DocumentLattice[SYM](arcs: Array[List[Arc[SYM]]]) {
 	def mkString(sep: String = "\n"): String = {
 		val arcStrings =
 			for (source <- nonfinalNodes; arc <- arcs(source))
-				yield s"S$source -> S${arc.target} [${arc.sym.toString}]"
+				yield arc match {
+					case Arc(sym, target) => s"S$source -> S$target ( ) [${sym.toString}]"
+					case LabeledArc(sym, target, label) => s"S$source -> S$target ($label) [${sym.toString}]"
+				}
 		arcStrings.mkString(sep)
 	}
 }
@@ -52,35 +68,10 @@ case class DocumentLattice[SYM](arcs: Array[List[Arc[SYM]]]) {
 object DocumentLattice {
 	val logger = Logger("DocumentLattice")
 
-	def parseRule(ruleString: String): Array[Either[String, Int]] = {
-		for (tok ← ruleString.split(" "))
-			yield """^R(\d+)$""".r.findAllMatchIn(tok).toList match {
-				case List(m) ⇒ Right(m.group(1).toInt)
-				case _ ⇒ Left(tok)
-			}
-	}
-
-	@tailrec
-	def matchesAt[A](s: IndexedSeq[A], pattern: List[A], pos: Int): Boolean = {
-		if (pattern.isEmpty)
-			return true
-		if (pos >= s.size || s(pos) != pattern.head)
-			false
-		else
-			matchesAt(s, pattern.tail, pos + 1)
-	}
-	def findOccurrences(tokens: IndexedSeq[String], pattern: String): IndexedSeq[Int] = {
-		val patternTokens = pattern.split(" ").toList
-//		println(patternTokens)
-		for (pos ← 0 to (tokens.length - patternTokens.length)
-			         if matchesAt(tokens, patternTokens, pos))
-			yield pos
-	}
-
 	def fromStringGrammar(grammar: StringGrammar,
 	                      allowThreshold: Double, enforceThreshold: Double, alpha: Double)
 	: DocumentLattice[String] = {
-		val arcs = Array.fill(grammar.tokens.length) {List.empty[Arc[String]]}
+		val arcs = Array.fill(grammar.tokens.length) {List.empty[AArc[String]]}
 		for ((source, target, str) <- grammar.root.arcs(allowThreshold, enforceThreshold, alpha)
 		                                if target - source < grammar.tokens.length // exclude root
     ) {
@@ -89,92 +80,25 @@ object DocumentLattice {
 		DocumentLattice(arcs)
 	}
 
-	def fromSequiturGrammar(tokens: IndexedSeq[String], grammar: SequiturGrammar, minFreq: Int = 2,
-	                        mergeThresholdPercentile: Double = 0.75)
+	def fromStringGrammarWithLabels(grammar: StringGrammar,
+	                                allowThreshold: Double, enforceThreshold: Double, alpha: Double,
+	                                labels: IndexedSeq[Option[Int]] = Array.empty[Option[Int]])
 	: DocumentLattice[String] = {
-		val rules = grammar.rules
-
-		val arcs = Array.fill(tokens.length) {List.empty[Arc[String]]}
-
-		val ruleOccurrences = rules map { _.occurrences }
-		val ruleLengths = rules map { _.length }
-//		val ruleLengths = ruleStrings map { str => str.count(_ == ' ') + 1 }
-
-		println(rules.map(_.freq).sorted.mkString("\n"))
-		val occurrenceCounts = ruleOccurrences.map(_.length).sorted
-		val calculatedMergeThreshold = occurrenceCounts(
-			(mergeThresholdPercentile*ruleOccurrences.length).toInt)
-		val mergeThreshold = max(minFreq, calculatedMergeThreshold)
-		println(s"mergeThreshold = $mergeThreshold")
-
-		val bestRuleLen = Array.fill(tokens.length) { 0 }
-		val mergeMask = Array.fill(tokens.length) { true }
-		for (r <- rules.indices) {
-			val occurrences = ruleOccurrences(r)
-			if (occurrences.length >= mergeThreshold) {
-				val str = rules(r).toString
-				val len = ruleLengths(r)
-				logger.debug(s"Rule R$r (occ: $occurrences) [$str]")
-				for (occIndex: Int ← occurrences)
-					for (i <- occIndex until occIndex + len) {
-						if (len > bestRuleLen(i)) {
-							bestRuleLen(i) = len
-//							logger.debug(s"  bestRuleLen($i) = $len")
-						}
-						mergeMask(i) = false
-//						logger.debug(s"  mergeMask($i) = false")
-					}
-			}
-		}
-
-		for (r <- rules.indices) {
-//			logger.debug("_________")
-//			logger.debug(rule.getRuleString)
-			val occurrences = ruleOccurrences(r)
-			if (occurrences.length >= minFreq) {
-				val str = rules(r).toString
-				val len = ruleLengths(r)
-				for (occIndex: Int ← occurrences) {
-					val qualifies = len >= bestRuleLen(occIndex)
-					logger.debug(s"  $qualifies: $occIndex -> ${occIndex+len}: $str")
-//					if (mergeMask(occIndex) || occurrences.size >= mergeThreshold)
-					if (qualifies)
-						arcs(occIndex) ::= Arc(str, occIndex + len)
+		val arcs = Array.fill(grammar.tokens.length) {List.empty[AArc[String]]}
+		for ((source, target, str) <- grammar.root.arcs(allowThreshold, enforceThreshold, alpha)
+		                                if target - source < grammar.tokens.length // exclude root
+    ) {
+			if (labels.nonEmpty) {
+				if (labels.slice(source + 1, target).forall(_ == labels(source))) {
+					arcs(source) ::= (labels(source) match {
+						case Some(i) => LabeledArc(str, target, i)
+						case None => Arc(str, target)
+					})
 				}
 			}
+			else
+				arcs(source) ::= Arc(str, target)
 		}
-
-		// Add single-token arcs whereever we don't have high-confidence multi-token arcs
-		for ((token, occIndex) ← tokens.zipWithIndex if mergeMask(occIndex))
-			arcs(occIndex) ::= Arc(token, occIndex + 1)
-
-		// Sometimes we remove too many arcs and leave the lattice without a single path from
-		// start to end. This can always be fixed by adding in single-token arcs to any un-connected
-		// ends of existing arcs.
-		var targets = (for (arcsFrom <- arcs; arc <- arcsFrom) yield arc.target).toSet
-
-		for (start <- arcs.indices) {
-			if (arcs(start).nonEmpty) {
-				var u = start
-				while (u > 0 && !targets.contains(u)) {
-					logger.debug(s"Adding singleton arc into $u")
-					arcs(u - 1) ::= Arc(tokens(u - 1), u)
-					targets ++= Set(u)
-					u -= 1
-				}
-			}
-
-			for (arc <- arcs(start)) {
-				var t = arc.target
-				while (t < tokens.length - 1 && arcs(t).isEmpty) {
-					logger.debug(s"Adding singleton arc from $t")
-					arcs(t) ::= Arc(tokens(t), t + 1)
-					targets ++= Set(t + 1)
-					t += 1
-				}
-			}
-		}
-
 		DocumentLattice(arcs)
 	}
 
@@ -290,7 +214,7 @@ class StructuredDocumentModel[SYM](
 	lazy val stateNames: IndexedSeq[String] = (0 until numStates) map { stateName }
 
 	def stateName(i: Int): String =
-		s"[[$i:" + abbreviate(vocab(argmax(emitCost(i, ::))).toString, 10) + "]]"
+		s"[[$i:" + abbreviate(vocab(argmax(emitCost(i, ::))).toString, 20) + "]]"
 
 	// The Greek variables for the intermediate calculations are based on Jurafsky & Martin,
 	// Speech & Language Processing.
@@ -307,16 +231,25 @@ class StructuredDocumentModel[SYM](
 		val α = DenseMatrix.fill(doc.numNodes, numStates) {
 			Double.NegativeInfinity
 		}
-		α(0, ::) := initCost.t
+		α(0, ::) := initCost.t // TODO: This should respect doc labels, in case first token is labeled
 		for (t <- doc.nonfinalNodes;
-		     i <- 0 until numStates;
 		     arc <- doc.arcs(t);
+		     i <- 0 until numStates;
 		     u = arc.target;
+		     u_label = if (u < doc.labels.length) doc.labels(u) else null;
 		     j <- 0 until numStates
     ) {
-			val cost = α(t, i) + transCost(i, j) + emitCost(i, vocab(arc.sym))
-//			println(s"$t $i -> α($u $j) += $cost (${α(t, i)} + ${transCost(i, j)} + ${emitCost(i, vocab
-//			(arc.sym))} [emitCost($i, ${vocab(arc.sym)})])")
+			val transCost_ij =
+				if (u_label == null)
+					transCost(i, j)
+				else if (j == u_label) // All probability mass goes to the transition to the label state
+					0.0
+				else
+					Double.NegativeInfinity
+			val cost = α(t, i) + transCost_ij + emitCost(i, vocab(arc.sym))
+//			println(s"$t S$i -> α($u S$j) += $cost " +
+//					s"(${α(t, i)} + $transCost_ij + ${emitCost(i, vocab(arc.sym))} " +
+//						s"[emitCost($i, ${vocab(arc.sym)})])")
 			// TODO: make more efficient by doing a single softmax for each node/state pair
 			α(u, j) = softmax(α(u, j), cost)
 		}
@@ -344,18 +277,27 @@ class StructuredDocumentModel[SYM](
 		val β = DenseMatrix.fill(doc.numNodes, numStates) { Double.NegativeInfinity }
 		β(doc.finalNode, ::) := 0.0
 		for (t <- doc.nonfinalNodes.reverse;
-		     i <- 0 until numStates;
 		     arc <- doc.arcs(t);
+		     i <- 0 until numStates;
 		     u = arc.target;
 		     j <- 0 until numStates
     ) {
-			val cost = transCost(i, j) + emitCost(i, vocab(arc.sym)) + β(u, j)
-//			println(s"β($t $i) += $cost -> $u $j")
+			val transCost_ij = arc match {
+				case LabeledArc(_, _, label) if label == i =>
+					0.0
+				case LabeledArc(_, _, _) =>
+					Double.NegativeInfinity
+				case _ =>
+					transCost(i, j)
+			}
+			val cost = transCost_ij + emitCost(i, vocab(arc.sym)) + β(u, j)
+//			println(s"β($t S$i) += $cost -> $u S$j ($transCost_ij + emitCost)")
 			β(t, i) = softmax(β(t, i), cost)
 		}
 
 		// γ(t, i) = Pr([state at node t = i] | doc)
-		val γ = α + β - logPdoc
+		val γ = α + β
+		γ(::, *) -= softmax(γ, Axis._1)
 
 		(α, β, γ, logPdoc)
 	}
@@ -377,8 +319,12 @@ class StructuredDocumentModel[SYM](
       val (α, β, γ, logPdoc) = forwardBackward(doc)
 
 //			println(s"α = \n$α")
+//			println(s"α / P(doc) = \n${α - logPdoc}")
 //			println(s"β = \n$β")
+//			println(s"β / P(doc) = \n${β - logPdoc}")
+//			println(s"α * β = \n${α + β}")
 //			println(s"γ = \n$γ")
+//			println(s"log P(doc) = $logPdoc")
 
 			numDocs += 1
 			sumLogPdoc += logPdoc
@@ -394,6 +340,9 @@ class StructuredDocumentModel[SYM](
 					α(t, i) + transCost(i, j) + emitCost(i, vocab(arc.sym)) + β(u, j) - logPdoc
 				}
 
+				// TODO - optimization opportunity(?): Instead of using softmax to convert back out of
+				//  log space on each iteration, just do ordinary addition here, and take the exp of the
+				//  sum after the loop.
 				transObs := softmax(transObs, ξ_tu)
 
 				val arcObs = DenseVector.tabulate(numStates) { i => γ(t, i) }
@@ -418,6 +367,7 @@ class StructuredDocumentModel[SYM](
 	final def train(
 			               docs: Seq[DocumentLattice[SYM]],
 			               strategy: TrainingStrategy = FB,
+			               maxEpochs: Int = 99,
 			               tol: Double = 1e-5,
 			               prevEntropies: List[Double] = List.empty[Double]
   ): (StructuredDocumentModel[SYM], List[Double]) = {
@@ -426,11 +376,13 @@ class StructuredDocumentModel[SYM](
 			case Viterbi => reestimateViterbi(docs)
 		}
 		val newEntropyList = meanEntropy :: prevEntropies
+		if (maxEpochs == 1)
+			return (newModel, newEntropyList)
 		prevEntropies match {
 			case prevEntropy :: _ =>
-				if (abs(prevEntropy - meanEntropy)/prevEntropy < tol) {
+				if (abs(prevEntropy - meanEntropy) < tol) {
 					if (strategy == FBThenViterbi)
-						newModel.train(docs, Viterbi, tol, newEntropyList)
+						newModel.train(docs, Viterbi, maxEpochs - 1, tol, newEntropyList)
 					else
 						(newModel, newEntropyList)
 				}
@@ -439,9 +391,9 @@ class StructuredDocumentModel[SYM](
 						println(s"Warning: entropy increased: $newEntropyList")
 						//				(this, prevEntropies)
 					}
-					newModel.train(docs, strategy, tol, newEntropyList)
+					newModel.train(docs, strategy, maxEpochs - 1, tol, newEntropyList)
 				}
-			case _ => newModel.train(docs, strategy, tol, newEntropyList)
+			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol, newEntropyList)
 		}
 	}
 
@@ -639,6 +591,13 @@ object StructuredDocumentModel {
 		),
 	)
 
+	def makeLabelArray(labels: IndexedSeq[String], i: Int = 0, seen: Map[String, Int] = Map.empty)
+	: Array[String]	= {
+		val seen = mutable.LinkedHashSet.empty[String]
+		seen ++= labels
+		seen.toArray
+	}
+
 	def randomDistRows(rows: Int, cols: Int, rand: Rand[Double]): DenseMatrix[Double] = {
 		val D = DenseMatrix.rand(rows, cols, rand)
 		D(::, *) /= sum(D, Axis._1)
@@ -663,8 +622,8 @@ object StructuredDocumentModel {
 		// TODO make initial state distribution prefer remaining in the same state?
 		val p_init = uniformDist(numStates)
 //		val p_trans = uniformDistRows(numStates, numStates)
-		val p_trans = randomDistRows(numStates, numStates, randBasis.uniform) * 0.1 + 0.9/numStates
-		val p_emit = randomDistRows(numStates, vocab.size, randBasis.uniform) * 0.1 + 0.9/vocab.size
+		val p_trans = randomDistRows(numStates, numStates, randBasis.uniform) * 0.2 + 0.8/numStates
+		val p_emit = randomDistRows(numStates, vocab.size, randBasis.uniform) * 0.2 + 0.8/vocab.size
 		new StructuredDocumentModel[SYM](vocab, log(p_init), log(p_trans), log(p_emit))
 	}
 
@@ -707,140 +666,98 @@ object StructuredDocumentModel {
 		}
 	}
 
-	def problemExample3(): Unit = {
-		// (BTW, seems to train OK with just '>' as delimiter, but not '> >'.)
-		// Hand-coded model for this toy doc has entropy 45.
-		// Training from random initialization uses only 2 states, and has entropy 78.
-		val numStates = 4
-		val minFreq = 5
-		val rawText = """
-				> >
-				  id 1
-				  name aa bb
-				> >
-				  id 2
-				  name bb cc
-				> >
-				  id 3
-				  name cc aa
-				> >
-				  id 4
-				  name aa cc
-				> >
-				  id 5
-				  name cc bb
-				> >
-				  id 6
-				  name bb aa
-				> >
-				  id 7
-				  name aa aa
-				> >
-		"""
-		val tokenize = new Tokenizer
-		val tokens = tokenize(rawText.toLowerCase).toArray
-		val grammar = SequiturGrammar(tokens)
-		println("Warning: this hasn't been tested since refactor on 2020-03-31")
-
-		val doc = DocumentLattice.fromSequiturGrammar(tokens, grammar, minFreq, 0.6)
-		println(doc.mkString())
-
-		val docs = List(doc)
-
-		val vocab = DocumentLattice.buildVocab(docs)
-		val emit = DenseMatrix.fill(numStates, vocab.size) { 0.001 }
-		emit(0, vocab("> > id")) = 0.99
-		for (i <- 1 to 7)
-			emit(1, vocab(i.toString)) = 0.99
-		emit(2, vocab("name")) = 0.99
-		for (name <- "aa bb cc".split(" "))
-			emit(3, vocab(name)) = 0.99
-		val trans = DenseMatrix.fill(numStates, numStates) { 0.001 }
-		trans(0, 1) = 0.99
-		trans(1, 2) = 0.99
-		trans(2, 3) = 0.99
-		trans(3, 3) = 0.5
-		trans(3, 0) = 0.5
-		val myModel = new StructuredDocumentModel[String](
-			vocab,
-			log(DenseVector(1.0, 0.0, 0.0, 0.0)),
-			log(trans(::, *) / sum(trans, Axis._1)),
-			log(emit(::, *) / sum(emit, Axis._1))
-		)
-		println("Hand-coded model:")
-		println(myModel.viterbiChart(docs.head).pathInfo())
-		println()
-
-		val (myModel1, myModel1Entropy) = myModel.reestimateViterbi(docs)
-		println(s"Hand-coded model, plus one viterbi re-estimation (entropy=$myModel1Entropy):")
-		println(myModel1.viterbiChart(docs.head).pathInfo())
-		println()
-
-		val initialModel = StructuredDocumentModel.randomInitial(
-			numStates, DocumentLattice.buildVocab(docs))
-//		val initialModel = myModel
-		val (newModel, entropyLog) = initialModel.train(docs, FBThenViterbi,1e-5)
-		println(s"\nfinal model:\n$newModel")
-		println(s"\nIterations: ${entropyLog.size}")
-		println(s"Entropy log: $entropyLog")
-		println()
-//		println(newModel.viterbiChart(docs.head).toString)
-		println(newModel.viterbiChart(docs.head).pathInfo())
-	}
-
 	def main(args: Array[String]): Unit = {
 //		multiTest(args(0).toInt, List(DocumentLattice.examples(2))); return
 //		demo(); return
 //		problemExample3(); return
 
-		val input = if (args.length > 0) args(0) else "b a n a n a"
-		val numStates = if (args.length > 1) args(1).toInt else 5
-		val allowThreshold = if (args.length > 2) args(2).toDouble else 0.2
-		val enforceThreshold = if (args.length > 3) args(3).toDouble else 0.8
-		val alpha = if (args.length > 4) args(4).toDouble else 1.0
+		case class Config(
+				                 input: String = "b a n a n a",
+				                 inputFile: File = null,
+				                 generateSimple: Seq[Int] = Seq(),
+				                 generateMulti: Seq[Int] = Seq(),
+				                 states: Int = 5,
+				                 allowThreshold: Double = 0.2,
+				                 enforceThreshold: Double = 0.8,
+				                 alpha: Double = 1.0,
+				                 labelCoverage: Double = 0.5,
+				                 tolerance: Double = 1e-5,
+				                 maxEpochs: Int = 99,
+		)
+		val parser = new scopt.OptionParser[Config]("StructuredDocumentModel") {
+			opt[String]("input").action( (x, c) =>
+				c.copy(input = x)
+			)
+			opt[File]("input-file").action( (x, c) =>
+				c.copy(inputFile = x)
+			)
+			opt[Seq[Int]]("generate-simple").action( (x, c) =>
+				c.copy(generateSimple = x)
+			)
+			opt[Seq[Int]]("generate-multi").action( (x, c) =>
+				c.copy(generateMulti = x)
+			)
+			opt[Int]("states").action( (x, c) =>
+				c.copy(states = x)
+			)
+			opt[Double]("allow-threshold").action( (x, c) =>
+				c.copy(allowThreshold = x)
+			)
+			opt[Double]("enforce-threshold").action( (x, c) =>
+				c.copy(enforceThreshold = x)
+			)
+			opt[Double]("alpha").action( (x, c) =>
+				c.copy(alpha = x)
+			)
+			opt[Double]("label-coverage").action( (x, c) =>
+				c.copy(labelCoverage = x)
+			)
+			opt[Double]("tolerance").action( (x, c) =>
+				c.copy(tolerance = x)
+			)
+			opt[Int]("max-epochs").action( (x, c) =>
+				c.copy(maxEpochs = x)
+			)
+		}
+		val config = parser.parse(args, Config()) match {
+			case Some(c) => c
+			case None =>
+				throw new Exception("Invalid arguments")
+		}
 
-		val rawText = if (input(0) == '@') {
-			val source = Source.fromFile(input.substring(1))
-			try source.getLines.mkString(" ") finally source.close
+		val labeledDoc = if (config.generateSimple.nonEmpty) {
+			if (config.generateSimple.size != 4)
+				throw new Exception(s"Wrong format for simpleItems parameters")
+			val Seq(size, prefixLength, descLength, descVocabSize) = config.generateSimple
+			val pcfg = simpleItems(size, prefixLength, descLength, descVocabSize)
+			DataGenerator.generateLabeledDoc(pcfg, List("DESCWORD"), config.labelCoverage, new Random(0))
 		}
-		else if (input.startsWith("simpleItems(")) {
-			val params = """simpleItems\((\d+), *(\d+), *(\d+), *(\d+)\)""".r
-			val pcfg = input match {
-				case params(size, prefixLength, descLength, descVocabSize) =>
-					simpleItems(size.toInt, prefixLength.toInt, descLength.toInt, descVocabSize.toInt)
-				case _ =>
-					throw new Exception(s"Wrong format for simpleItems parameters: $input")
-			}
-			pcfg.generate(new Random(0)).mkString(" ")
+		else if (config.generateMulti.nonEmpty) {
+			if (config.generateMulti.size != 1)
+				throw new Exception(s"Wrong format for multiFieldItems parameters")
+			val pcfg = DataGenerator.multiFieldItems(config.generateMulti.head,
+			                                         (2, 10), (5, 20), (10, 20))
+			DataGenerator.generateLabeledDoc(pcfg, List("FIELD1WORD", "FIELD2WORD", "FIELD3WORD"),
+			                                 config.labelCoverage, new Random(0))
 		}
-		else if (input.startsWith("multiFieldItems(")) {
-			val params = """multiFieldItems\((\d+)\)""".r
-			val pcfg = input match {
-				case params(size) =>
-					DataGenerator.multiFieldItems(size.toInt, (2, 10), (5, 20), (10, 20))
-				case _ =>
-					throw new Exception(s"Wrong format for simpleItems parameters: $input")
-			}
-			pcfg.generate(new Random(0)).mkString(" ")
-		}
+		else if (config.inputFile != null)
+			LabeledDoc(Source.fromFile(config.inputFile), config.labelCoverage)
 		else
-			input
+			LabeledDoc(config.input, config.labelCoverage)
 
-		val tokenize = new Tokenizer
-		val tokens = tokenize(rawText.toLowerCase).toArray
-//		val grammar = SequiturGrammar(tokens)
-		val grammar = SequiturGrammar(tokens).toStringGrammar
+		val grammar = SequiturGrammar(labeledDoc.tokens).toStringGrammar
 
-//		val doc = DocumentLattice.fromSequiturGrammar(tokens, grammar, minFreq, 0.6)
-		val doc = DocumentLattice.fromStringGrammar(grammar, allowThreshold, enforceThreshold, alpha)
+		val doc = DocumentLattice.fromStringGrammarWithLabels(
+		              grammar, config.allowThreshold, config.enforceThreshold, config.alpha,
+									labeledDoc.labels)
 		println(doc.mkString())
 //		return // just test DocumentLattice.fromGrammar
 
 		val docs = List(doc)
 
 		val initialModel = StructuredDocumentModel.randomInitial(
-			numStates, DocumentLattice.buildVocab(docs))
-		val (newModel, entropyLog) = initialModel.train(docs, FBThenViterbi,1e-5)
+			config.states, DocumentLattice.buildVocab(docs))
+		val (newModel, entropyLog) = initialModel.train(docs, FB, config.maxEpochs, config.tolerance)
 		println(s"\nfinal model:\n$newModel")
 		println(s"\nIterations: ${entropyLog.size}")
 		println(s"Entropy log: $entropyLog")

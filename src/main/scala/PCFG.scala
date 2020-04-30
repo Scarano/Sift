@@ -21,7 +21,13 @@ case class PCFG(prods: Map[String, Seq[Prod]], start: String) {
 
 object PCFG {
 	sealed trait Node {
+		// TODO: Revisit use cases of this and see if I'm better off using a zipper
 		def walk[A](acc: A, ancestors: List[Nonterm] = List.empty)(f: (A, Term, List[Nonterm]) => A): A
+		def leafPathPairs: Vector[(Term, List[Nonterm])] = {
+			walk(Vector.empty[(Term, List[Nonterm])]) {
+				(acc, term, anc) => acc :+ (term, anc)
+			}
+		}
 	}
 	case class Term(s: String) extends Node {
 		override def toString: String = s
