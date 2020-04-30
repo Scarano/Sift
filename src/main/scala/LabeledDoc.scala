@@ -63,9 +63,15 @@ object LabeledDoc {
 	}
 
 	def reduceLabelCoverage(labels: Array[Option[Int]], coverage: Double): Array[Option[Int]] = {
+		if (coverage == 0.0) {
+			// unfortunately the condition that prevents us from breaking up labeled regions also
+			// requires us to special-case coverage == 0.0
+			return Array.fill(labels.length) { None }
+		}
 		val result = labels.clone()
-		var i = (result.length*coverage).toInt
-		while (i < result.length && result(i).nonEmpty) i += 1
+		var i = Integer.max(1, (result.length*coverage).toInt)
+		// Don't break up a contiguous labeled region; skip to next label change
+		while (i < result.length && result(i) == result (i - 1)) i += 1
 		while (i < result.length) {
 			result(i) = None
 			i += 1
