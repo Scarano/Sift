@@ -1,5 +1,7 @@
+package structureextractor
+
+import gstlib.GeneralizedSuffixTreeBuilder
 import gstlib.GeneralizedSuffixTreeBuilder.Sequence
-import gstlib.{GeneralizedSuffixTree, GeneralizedSuffixTreeBuilder}
 import net.seninp.gi.sequitur.{SAXRule, SequiturFactory}
 
 import scala.collection.generic.CanBuildFrom

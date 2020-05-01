@@ -1,9 +1,14 @@
-import scala.io.Source
+package structureextractor.markovlattice
+
 import breeze.linalg._
 import breeze.stats.distributions.RandBasis
 import smile.sequence.HMM
 
 import scala.collection.mutable.ListBuffer
+import scala.io.Source
+
+import structureextractor.Vocab
+
 
 class HMMSandbox {
 }

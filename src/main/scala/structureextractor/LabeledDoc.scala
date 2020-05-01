@@ -1,3 +1,5 @@
+package structureextractor
+
 import scala.collection.mutable
 import scala.io.Source
 

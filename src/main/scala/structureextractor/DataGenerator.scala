@@ -1,10 +1,11 @@
-import PCFG.{Prod, Term}
-import breeze.linalg.DenseVector
-import breeze.linalg.sum
-import breeze.util.OptionIndex
+package structureextractor
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
+
+import breeze.linalg.{DenseVector, sum}
+
+import structureextractor.PCFG.Term
 
 class DataGenerator {
 

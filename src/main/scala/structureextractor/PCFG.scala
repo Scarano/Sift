@@ -1,8 +1,10 @@
-import PCFG._
+package structureextractor
 
 import scala.annotation.tailrec
 import scala.collection.breakOut
 import scala.util.Random
+
+import structureextractor.PCFG._
 
 
 case class PCFG(prods: Map[String, Seq[Prod]], start: String) {

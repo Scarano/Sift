@@ -1,4 +1,4 @@
-import gstlib.SuffixTree
+package structureextractor
 
 class Compressor {
 	def encode(str: String) = {

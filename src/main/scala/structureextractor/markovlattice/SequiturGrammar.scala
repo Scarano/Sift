@@ -1,13 +1,17 @@
-import breeze.linalg.{DenseVector, sum}
-import breeze.numerics.log
-import gi.logic.{GrammarRuleRecord, GrammarRules}
-import gi.sequitur.{SAXRule, SequiturFactory}
+package structureextractor.markovlattice
 
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
 import scala.collection.{breakOut, mutable}
 import scala.io.Source
-import Util.abbreviate
+
+import breeze.linalg.{DenseVector, sum}
+import breeze.numerics.log
+import gi.logic.{GrammarRuleRecord, GrammarRules}
+import gi.sequitur.{SAXRule, SequiturFactory}
+
+import structureextractor.Tokenizer
+import structureextractor.Util.abbreviate
 
 
 //// abstract string grammar, not necessarily created by sequitur

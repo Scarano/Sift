@@ -1,3 +1,5 @@
+package structureextractor
+
 object Util {
 	def abbreviate(s: String, maxLen: Int, ellipsis: String = "…"): String = {
 		if (s.length <= maxLen)

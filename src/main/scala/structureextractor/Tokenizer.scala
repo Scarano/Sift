@@ -1,3 +1,5 @@
+package structureextractor
+
 import scala.util.matching.Regex
 
 class Tokenizer(preserveWhitespace: Boolean = false, breakOutDigits: Boolean = false) {

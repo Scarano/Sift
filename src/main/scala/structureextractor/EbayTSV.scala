@@ -1,9 +1,11 @@
+package structureextractor
+
 import java.io.File
 
-import scala.io.Source
-import Util.printToFile
-
 import scala.annotation.tailrec
+import scala.io.Source
+
+import structureextractor.Util.printToFile
 
 object EbayTSV {
 
