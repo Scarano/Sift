@@ -5,9 +5,8 @@ import gi.sequitur.{SAXRule, SequiturFactory}
 
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
-import scala.collection.breakOut
+import scala.collection.{breakOut, mutable}
 import scala.io.Source
-
 import Util.abbreviate
 
 
@@ -110,7 +109,7 @@ case class GiRuleNonterminal(rule: Int) extends GiRuleElement {
 case class SequiturGrammar(tokens: IndexedSeq[String], rules: IndexedSeq[SequiturGrammar.Rule]) {
 	def toStringGrammar: StringGrammar = {
 		val nonterminals = Array.fill[StringGrammar.Rule](rules.length) {null}
-		val terminals = scala.collection.mutable.Map.empty[String, StringGrammar.Rule]
+		val terminals = mutable.Map.empty[String, StringGrammar.Rule]
 		nonterminals(0) = rules(0).toStringGrammarRule(this, nonterminals, terminals)
 		StringGrammar(tokens, nonterminals, terminals)
 	}
@@ -229,9 +228,10 @@ object SequiturGrammar {
 	}
 
 	def apply(tokens: IndexedSeq[String]): SequiturGrammar = {
-		val text = tokens.mkString(" ")
+		val lowerTokens = tokens.map(_.toLowerCase())
+		val text = lowerTokens.mkString(" ")
 		val rule = SequiturFactory.runSequitur(text)
-		SequiturGrammar(tokens, rule.toGrammarRulesData)
+		SequiturGrammar(lowerTokens, rule.toGrammarRulesData)
 	}
 
 	def main(args: Array[String]): Unit = {

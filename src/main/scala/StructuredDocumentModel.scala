@@ -225,6 +225,8 @@ class StructuredDocumentModel[SYM](
 		* The "forward" algorithm. Computes the joint probability of arriving at a particular node
 		* in the lattice (and therefore generating the observed sequence up to that point), and being
 		* in a particular state at that time.
+		* Note that when the doc has labels, the probabilities are additionally conditionalized on
+		* the labeling.
 		*/
 	def forward(doc: DocumentLattice[SYM]): DenseMatrix[Double] = {
 
@@ -264,6 +266,8 @@ class StructuredDocumentModel[SYM](
 		*          β (the backward probabilities),
 		*          γ (the joint probabilities),
 		*          log Pr(doc; θ) (AKA log likelihood))
+		* Note that when the doc has labels, all probabilities are additionally conditionalized on
+		* the labeling.
 		*/
 	def forwardBackward(doc: DocumentLattice[SYM])
 		: (DenseMatrix[Double], DenseMatrix[Double], DenseMatrix[Double], Double) =
@@ -319,9 +323,7 @@ class StructuredDocumentModel[SYM](
       val (α, β, γ, logPdoc) = forwardBackward(doc)
 
 //			println(s"α = \n$α")
-//			println(s"α / P(doc) = \n${α - logPdoc}")
 //			println(s"β = \n$β")
-//			println(s"β / P(doc) = \n${β - logPdoc}")
 //			println(s"α * β = \n${α + β}")
 //			println(s"γ = \n$γ")
 //			println(s"log P(doc) = $logPdoc")
@@ -335,10 +337,20 @@ class StructuredDocumentModel[SYM](
 		       arc <- doc.arcs(t);
 		       u = arc.target)
 			{
-				// ξ(t, u, i, j) = Pr(arc(t/i -> u/j) | doc)
+				// ξ(t, u, i, j) = Pr(arc(t/i -> u/j) | doc, labels)
 				val ξ_tu = DenseMatrix.tabulate(numStates, numStates) { case (i, j) =>
-					α(t, i) + transCost(i, j) + emitCost(i, vocab(arc.sym)) + β(u, j) - logPdoc
+					// TODO - remove redundant computation
+					val transCost_ij = arc match {
+						case LabeledArc(_, _, label) if label == i =>
+							0.0
+						case LabeledArc(_, _, _) =>
+							Double.NegativeInfinity
+						case _ =>
+							transCost(i, j)
+					}
+					α(t, i) + transCost_ij + emitCost(i, vocab(arc.sym)) + β(u, j) - logPdoc
 				}
+//				println(s"ξ($t, $u) = \n$ξ_tu")
 
 				// TODO - optimization opportunity(?): Instead of using softmax to convert back out of
 				//  log space on each iteration, just do ordinary addition here, and take the exp of the
