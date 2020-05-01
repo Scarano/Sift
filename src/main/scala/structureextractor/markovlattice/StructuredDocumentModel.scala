@@ -153,13 +153,13 @@ class StructuredDocumentModel[SYM](
 		for (doc <- docs) {
       val (α, β, γ, logPdoc) = forwardBackward(doc)
 
-			println(s"α = \n${α(0 to 2, ::)}\n...")
-			println(s"β = \n${β(-3 to -1, ::)}\n...")
+//			println(s"α = \n${α(0 to 2, ::)}\n...")
+//			println(s"β = \n${β(-3 to -1, ::)}\n...")
 //			println(s"α = \n$α")
 //			println(s"β = \n$β")
 //			println(s"α * β = \n${α + β}")
 //			println(s"γ = \n$γ")
-			println(s"log P(doc) = $logPdoc")
+//			println(s"log P(doc) = $logPdoc")
 
 			numDocs += 1
 			sumLogPdoc += logPdoc

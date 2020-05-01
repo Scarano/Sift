@@ -6,6 +6,8 @@ scalaVersion := "2.12.10"
 
 libraryDependencies += "com.github.scopt" %% "scopt" % "3.7.1"
 
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.1.1" % "test"
+
 //libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.2"
 
 //libraryDependencies += "com.github.guillaumedd" %% "gstlib" % "0.1.2"

@@ -3,6 +3,7 @@ package structureextractor.markovlattice
 import com.typesafe.scalalogging.Logger
 import structureextractor.Vocab
 
+import scala.annotation.tailrec
 import scala.reflect.ClassTag
 
 abstract class AArc[SYM] {
@@ -56,24 +57,54 @@ case class DocumentLattice[SYM](arcs: Array[List[AArc[SYM]]]) {
 object DocumentLattice {
 	val logger = Logger("DocumentLattice")
 
+	/**
+		* Divide label slices from [[t]] to [[u]] at label discontinuities.
+		* @param labels
+		* @param t
+		* @param u
+		* @return List of pairs [[(v, w)]] that sequentially span [[t]] to [[u]].
+		*/
+	def labelPartitions(labels: IndexedSeq[Option[Int]], t: Int, u: Int): List[(Int, Int)] =
+		labelPartitions(labels, t, u, t, Nil)
+	@tailrec
+	def labelPartitions(labels: IndexedSeq[Option[Int]], t: Int, u: Int,
+	                    start: Int, acc: List[(Int, Int)])
+	: List[(Int, Int)] = {
+		if (t + 1 == u)
+			((start, u) :: acc).reverse
+		else if (labels(t) == labels(t + 1))
+			labelPartitions(labels, t + 1, u, start, acc)
+		else
+			labelPartitions(labels, t + 1, u, t + 1, (start, t + 1) :: acc)
+	}
+
 	def fromStringGrammar(grammar: StringGrammar,
-	                      allowThreshold: Double, enforceThreshold: Double, alpha: Double,
-	                      labels: IndexedSeq[Option[Int]] = Array.empty[Option[Int]])
+	                      allowThreshold: Double, enforceThreshold: Double, alpha: Double)
 	: DocumentLattice[String] = {
 		val arcs = Array.fill(grammar.tokens.length) {List.empty[AArc[String]]}
 		for ((source, target, str) <- grammar.root.arcs(allowThreshold, enforceThreshold, alpha)
 		                                if target - source < grammar.tokens.length // exclude root
     ) {
-			if (labels.nonEmpty) {
-				if (labels.slice(source + 1, target).forall(_ == labels(source))) {
-					arcs(source) ::= (labels(source) match {
-						case Some(i) => LabeledArc(str, target, i)
-						case None => Arc(str, target)
-					})
-				}
-			}
-			else
-				arcs(source) ::= Arc(str, target)
+			arcs(source) ::= Arc(str, target)
+		}
+		DocumentLattice(arcs)
+	}
+
+	def fromStringGrammar(grammar: StringGrammar,
+	                      allowThreshold: Double, enforceThreshold: Double, alpha: Double,
+	                      labels: IndexedSeq[Option[Int]])
+	: DocumentLattice[String] = {
+
+		val arcs = Array.fill(grammar.tokens.length) {List.empty[AArc[String]]}
+		for ((source, target, str) <- grammar.root.arcs(allowThreshold, enforceThreshold, alpha)
+		                                if target - source < grammar.tokens.length; // exclude root
+			   (t, u) <- labelPartitions(labels, source, target)
+    ) {
+			val s = if (t == source && u == target) str else grammar.tokens.slice(t, u).mkString(" ")
+			arcs(t) ::= (labels(t) match {
+				case Some(i) => LabeledArc(s, u, i)
+				case None => Arc(s, u)
+			})
 		}
 		DocumentLattice(arcs)
 	}
