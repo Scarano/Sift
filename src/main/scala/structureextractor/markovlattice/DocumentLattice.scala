@@ -1,6 +1,10 @@
 package structureextractor.markovlattice
 
+import java.lang.Long
+
+import breeze.linalg.DenseMatrix
 import com.typesafe.scalalogging.Logger
+import gstlib.{GeneralizedSuffixTree, GeneralizedSuffixTreeBuilder}
 import structureextractor.Vocab
 
 import scala.annotation.tailrec
@@ -54,6 +58,21 @@ case class DocumentLattice[SYM](arcs: Array[List[AArc[SYM]]]) {
 	}
 }
 
+sealed trait OccurrenceCountTree
+case class OccurrenceCountBranch(count: Int, children: Seq[OccurrenceCountTree])
+case class OccurrenceCountLeaf(location: Int)
+object OccurrenceCountTree {
+
+//	def build(stree: gstlib.InnerTree.NonRootNode): OccurrenceCountTree = stree.
+//	def apply(tokens: Seq[String]): OccurrenceCountTree = {
+//    val stree = GeneralizedSuffixTreeBuilder.empty[String, Seq[String]]()
+//
+//    stree.insert(tokens)
+//
+//		stree.root.
+//	}
+}
+
 object DocumentLattice {
 	val logger = Logger("DocumentLattice")
 
@@ -76,6 +95,23 @@ object DocumentLattice {
 			labelPartitions(labels, t + 1, u, start, acc)
 		else
 			labelPartitions(labels, t + 1, u, t + 1, (start, t + 1) :: acc)
+	}
+
+	def fromTokens(tokens: Array[String], maxArcRatio: Int,
+	               allowThreshold: Double, enforceThreshold: Double, alpha: Double,
+                 labels: IndexedSeq[Option[Int]])
+	: DocumentLattice[String] = {
+		val maxArcLen = tokens.length / maxArcRatio
+		val counts = DenseMatrix.fill(tokens.length, maxArcLen) { 0 }
+
+		val arcs = Array.fill(tokens.length) {List.empty[AArc[String]]}
+
+		for (t <- tokens.indices;
+		     u <- t until Integer.min(t + maxArcLen, tokens.length))
+		{
+			???
+		}
+		DocumentLattice(???)
 	}
 
 	def fromStringGrammar(grammar: StringGrammar,

@@ -90,7 +90,7 @@ sealed abstract class GeneralizedSuffixTreeBuilder[Alphabet, Repr <% Sequence[Al
     Root()
   }
 
-  protected var root: Root = newRoot()
+  var root: Root = newRoot()
 
   def size(): Int =
     _sequences.size

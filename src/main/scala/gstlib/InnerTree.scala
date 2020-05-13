@@ -41,7 +41,7 @@ import GeneralizedSuffixTreeBuilder.{ Sequence, SequenceID, TerminalSymbol, debu
 import scala.annotation.tailrec
 import scala.collection.generic.CanBuildFrom
 
-protected[gstlib] object InnerTree {
+object InnerTree {
   val END: SequenceID = -1
   type Nodes = mutable.Map[Any, NonRootNode]
   def emptyNodes[Repr](): Nodes =
