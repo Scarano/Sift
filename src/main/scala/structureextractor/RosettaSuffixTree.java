@@ -1,42 +1,61 @@
 // This is copied from RosettaCode.org
 
-package structureextractor;
+// While making changes and performance improvements, I realized this is the
+// braindead O(n^2) suffix tree construction.
+// TODO: Find or code the Ukkonen or Farach algorithm.
 
-import scala.Int;
+package structureextractor;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class RosettaSuffixTree<A> {
-    private static class Node<A> {
-        List<A> subseq;
+    class Node {
+        int start = -1;
+        int end = -1;
         List<Integer> ch = new ArrayList<>();  // list of child nodes
+        Integer count = null;
 
         public String toString() {
-            if (null == subseq)
+            if (start == -1)
                 return "ROOT";
-            List<String> strings = subseq.stream().map(Object::toString)
+            List<String> strings = seq.subList(start, end).stream().map(Object::toString)
                 .collect(Collectors.toList());
-            return String.join(" ", strings);
+            return "[" + getCount() + "] " +  String.join(" ", strings);
+        }
+
+        public int getCount() {
+            if (count == null) {
+                if (ch.isEmpty()) {
+                    count = 1;
+                } else {
+                    Stream<Integer> childCounts = ch.stream().map(i -> nodes.get(i).getCount());
+                    count = childCounts.reduce(0, Integer::sum);
+                }
+            }
+            return count;
         }
     }
 
-    private List<Node<A>> nodes = new ArrayList<>();
+    private List<A> seq;
+    private List<Node> nodes = new ArrayList<>();
 
     public RosettaSuffixTree(List<A> seq) {
-        nodes.add(new Node<>());
+        this.seq = seq;
+        nodes.add(new Node());
         for (int i = 0; i < seq.size(); ++i) {
-            addSuffix(seq, i);
+            addSuffix(i);
         }
     }
 
-    private void addSuffix(List<A> suf, int from) {
-        int size = suf.size() - from;
+    private void addSuffix(int from) {
+        int size = seq.size() - from;
         int n = 0;
         int i = 0;
         while (i < size) {
-            A b = suf.get(from + i);
+            A b = seq.get(from + i);
             List<Integer> children = nodes.get(n).ch;
             int x2 = 0;
             int n2;
@@ -44,31 +63,35 @@ public class RosettaSuffixTree<A> {
                 if (x2 == children.size()) {
                     // no matching child, remainder of suf becomes new node.
                     n2 = nodes.size();
-                    Node<A> temp = new Node<>();
-                    temp.subseq = suf.subList(from + i, suf.size());
+                    Node temp = new Node();
+                    temp.start = from + i;
+                    temp.end = seq.size();
                     nodes.add(temp);
                     children.add(n2);
                     return;
                 }
                 n2 = children.get(x2);
-                if (nodes.get(n2).subseq.get(0) == b) break;
+                if (seq.get(nodes.get(n2).start) == b) break;
                 x2++;
             }
             // find prefix of remaining suffix in common with child
-            List<A> sub2 = nodes.get(n2).subseq;
+//            List<A> sub2 = nodes.get(n2).subseq;
+            Node node2 = nodes.get(n2);
             int j = 0;
-            while (j < sub2.size()) {
-                if (i + j >= size || !suf.get(from + i + j).equals(sub2.get(j))) {
+            while (j < node2.end - node2.start) {
+                if (i + j >= size || !seq.get(from + i + j).equals(seq.get(node2.start + j))) {
                     // split n2
                     int n3 = n2;
                     // new node for the part in common
                     n2 = nodes.size();
-                    Node<A> temp = new Node<>();
-                    temp.subseq = sub2.subList(0, j);
+                    Node temp = new Node();
+                    temp.start = node2.start;
+                    temp.end = node2.start + j;
                     temp.ch.add(n3);
                     nodes.add(temp);
-                    nodes.get(n3).subseq = sub2.subList(j, sub2.size());  // old node loses the part in
-                    // common
+                    // old node loses the part in common
+                    nodes.get(n3).start = node2.start + j;
+                    nodes.get(n3).end = node2.end;
                     nodes.get(n).ch.set(x2, n2);
                     break;  // continue down the tree
                 }
