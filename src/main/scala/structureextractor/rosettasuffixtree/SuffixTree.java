@@ -4,47 +4,18 @@
 // braindead O(n^2) suffix tree construction.
 // TODO: Find or code the Ukkonen or Farach algorithm.
 
-package structureextractor;
+package structureextractor.rosettasuffixtree;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
-public class RosettaSuffixTree<A> {
-    class Node {
-        int start = -1;
-        int end = -1;
-        List<Integer> ch = new ArrayList<>();  // list of child nodes
-        Integer count = null;
+public class SuffixTree<A> {
+    List<A> seq;
+    List<Node<A>> nodes = new ArrayList<>();
 
-        public String toString() {
-            if (start == -1)
-                return "ROOT";
-            List<String> strings = seq.subList(start, end).stream().map(Object::toString)
-                .collect(Collectors.toList());
-            return "[" + getCount() + "] " +  String.join(" ", strings);
-        }
-
-        public int getCount() {
-            if (count == null) {
-                if (ch.isEmpty()) {
-                    count = 1;
-                } else {
-                    Stream<Integer> childCounts = ch.stream().map(i -> nodes.get(i).getCount());
-                    count = childCounts.reduce(0, Integer::sum);
-                }
-            }
-            return count;
-        }
-    }
-
-    private List<A> seq;
-    private List<Node> nodes = new ArrayList<>();
-
-    public RosettaSuffixTree(List<A> seq) {
+    public SuffixTree(ArrayList<A> seq) {
         this.seq = seq;
-        nodes.add(new Node());
+        nodes.add(new Node<>(this));
         for (int i = 0; i < seq.size(); ++i) {
             addSuffix(i);
         }
@@ -63,7 +34,7 @@ public class RosettaSuffixTree<A> {
                 if (x2 == children.size()) {
                     // no matching child, remainder of suf becomes new node.
                     n2 = nodes.size();
-                    Node temp = new Node();
+                    Node<A> temp = new Node<>(this);
                     temp.start = from + i;
                     temp.end = seq.size();
                     nodes.add(temp);
@@ -76,7 +47,7 @@ public class RosettaSuffixTree<A> {
             }
             // find prefix of remaining suffix in common with child
 //            List<A> sub2 = nodes.get(n2).subseq;
-            Node node2 = nodes.get(n2);
+            Node<A> node2 = nodes.get(n2);
             int j = 0;
             while (j < node2.end - node2.start) {
                 if (i + j >= size || !seq.get(from + i + j).equals(seq.get(node2.start + j))) {
@@ -84,7 +55,7 @@ public class RosettaSuffixTree<A> {
                     int n3 = n2;
                     // new node for the part in common
                     n2 = nodes.size();
-                    Node temp = new Node();
+                    Node<A> temp = new Node<>(this);
                     temp.start = node2.start;
                     temp.end = node2.start + j;
                     temp.ch.add(n3);
@@ -136,6 +107,6 @@ public class RosettaSuffixTree<A> {
     	ArrayList<Character> sChars = new ArrayList<>(s.length());
     	for (char c: s.toCharArray())
     	    sChars.add(c);
-      new RosettaSuffixTree<>(sChars).visualize();
+      new SuffixTree<>(sChars).visualize();
     }
 }
