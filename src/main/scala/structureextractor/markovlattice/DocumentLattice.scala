@@ -5,7 +5,8 @@ import java.lang.Long
 import breeze.linalg.DenseMatrix
 import com.typesafe.scalalogging.Logger
 import gstlib.{GeneralizedSuffixTree, GeneralizedSuffixTreeBuilder}
-import structureextractor.Vocab
+import structureextractor.ScoredSubstring
+import structureextractor.{SubsequenceFinder, Vocab}
 
 import scala.annotation.tailrec
 import scala.reflect.ClassTag
@@ -102,16 +103,31 @@ object DocumentLattice {
                  labels: IndexedSeq[Option[Int]])
 	: DocumentLattice[String] = {
 		val maxArcLen = tokens.length / maxArcRatio
-		val counts = DenseMatrix.fill(tokens.length, maxArcLen) { 0 }
+		val minFreq = maxArcRatio/2 // TODO make this a parameter
 
-		val arcs = Array.fill(tokens.length) {List.empty[AArc[String]]}
+		val finder = new SubsequenceFinder(maxArcLen, minFreq, alpha)
+		val substrings = finder.subsequences(tokens, allowThreshold)
 
-		for (t <- tokens.indices;
-		     u <- t until Integer.min(t + maxArcLen, tokens.length))
-		{
-			???
+		val arcs: Array[List[AArc[String]]] = Array.tabulate(tokens.length) { t =>
+			List(labels(t) match {
+				case Some(i) => LabeledArc(tokens(t), t+1, i)
+				case None => Arc(tokens(t), t+1)
+			})
 		}
-		DocumentLattice(???)
+
+		for (substring <- substrings;
+		     ScoredSubstring(start, end, occ, score) = substring;
+		     s = tokens.slice(start, end).mkString(" ");
+		     t <- substring.occurrences;
+			   u = t + (end - start)
+    ) {
+			// TODO verify arc does not cross label boundary
+			arcs(t) ::= (labels(t) match {
+				case Some(i) => LabeledArc(s, u, i)
+				case None => Arc(s, u)
+			})
+		}
+		DocumentLattice(arcs)
 	}
 
 	def fromStringGrammar(grammar: StringGrammar,

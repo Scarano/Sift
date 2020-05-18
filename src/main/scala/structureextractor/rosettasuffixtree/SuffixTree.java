@@ -13,12 +13,13 @@ public class SuffixTree<A> {
     List<A> seq;
     List<Node<A>> nodes = new ArrayList<>();
 
-    public SuffixTree(ArrayList<A> seq) {
+    public SuffixTree(List<A> seq) {
         this.seq = seq;
         nodes.add(new Node<>(this));
         for (int i = 0; i < seq.size(); ++i) {
             addSuffix(i);
         }
+        nodes.get(0).populateDepth(0);
     }
 
     private void addSuffix(int from) {
@@ -26,8 +27,8 @@ public class SuffixTree<A> {
         int n = 0;
         int i = 0;
         while (i < size) {
-            A b = seq.get(from + i);
-            List<Integer> children = nodes.get(n).ch;
+            A term = seq.get(from + i);
+            List<Integer> children = nodes.get(n).children;
             int x2 = 0;
             int n2;
             while (true) {
@@ -42,7 +43,7 @@ public class SuffixTree<A> {
                     return;
                 }
                 n2 = children.get(x2);
-                if (seq.get(nodes.get(n2).start) == b) break;
+                if (seq.get(nodes.get(n2).start).equals(term)) break;
                 x2++;
             }
             // find prefix of remaining suffix in common with child
@@ -58,12 +59,12 @@ public class SuffixTree<A> {
                     Node<A> temp = new Node<>(this);
                     temp.start = node2.start;
                     temp.end = node2.start + j;
-                    temp.ch.add(n3);
+                    temp.children.add(n3);
                     nodes.add(temp);
                     // old node loses the part in common
                     nodes.get(n3).start = node2.start + j;
                     nodes.get(n3).end = node2.end;
-                    nodes.get(n).ch.set(x2, n2);
+                    nodes.get(n).children.set(x2, n2);
                     break;  // continue down the tree
                 }
                 j++;
@@ -71,6 +72,16 @@ public class SuffixTree<A> {
             i += j;  // advance past part in common
             n = n2;  // continue down the tree
         }
+    }
+
+    public Node<A> getRoot() { return nodes.get(0); }
+
+    public Node<A> lookup(List<A> query) {
+        return null;
+    }
+
+    public Node<A> lookup(int start, int end) {
+        return nodes.get(0).lookup(start, end);
     }
 
     public void visualize() {
@@ -82,7 +93,7 @@ public class SuffixTree<A> {
     }
 
     private void visualize_f(int n, String pre) {
-        List<Integer> children = nodes.get(n).ch;
+        List<Integer> children = nodes.get(n).children;
         if (children.isEmpty()) {
             System.out.println("─ " + nodes.get(n));
             return;
@@ -107,6 +118,12 @@ public class SuffixTree<A> {
     	ArrayList<Character> sChars = new ArrayList<>(s.length());
     	for (char c: s.toCharArray())
     	    sChars.add(c);
-      new SuffixTree<>(sChars).visualize();
+      SuffixTree<Character> stree = new SuffixTree<>(sChars);
+
+      stree.visualize();
+
+      for (int end = 1; end <= 5; end++) {
+          System.out.println(stree.lookup(0, end));
+      }
     }
 }

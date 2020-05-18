@@ -59,6 +59,8 @@ object Experiment {
 				                 generateSimple: Seq[Int] = Seq(),
 				                 generateMulti: Seq[Int] = Seq(),
 				                 states: Int = 5,
+				                 sequiturLattice: Boolean = false,
+				                 maxArcRatio: Int = 5,
 				                 allowThreshold: Double = 0.2,
 				                 enforceThreshold: Double = 0.8,
 				                 alpha: Double = 1.0,
@@ -81,6 +83,12 @@ object Experiment {
 			)
 			opt[Int]("states").action( (x, c) =>
 				c.copy(states = x)
+			)
+			opt[Boolean]("sequitur-lattice").action( (x, c) =>
+				c.copy(sequiturLattice = x)
+			)
+			opt[Int]("max-arc-ratio").action( (x, c) =>
+				c.copy(maxArcRatio = x)
 			)
 			opt[Double]("allow-threshold").action( (x, c) =>
 				c.copy(allowThreshold = x)
@@ -127,11 +135,20 @@ object Experiment {
 		else
 			LabeledDoc(config.input, config.labelCoverage)
 
-		val grammar = SequiturGrammar(labeledDoc.tokens).toStringGrammar
+		val doc =
+			if (config.sequiturLattice) {
+				val grammar = SequiturGrammar(labeledDoc.tokens).toStringGrammar
 
-		val doc = DocumentLattice.fromStringGrammar(
-		              grammar, config.allowThreshold, config.enforceThreshold, config.alpha,
-									labeledDoc.labels)
+				DocumentLattice.fromStringGrammar(
+				              grammar, config.allowThreshold, config.enforceThreshold, config.alpha,
+											labeledDoc.labels)
+			}
+			else {
+				DocumentLattice.fromTokens(
+				              labeledDoc.tokens, config.maxArcRatio,
+				              config.allowThreshold, config.enforceThreshold, config.alpha,
+				              labeledDoc.labels)
+			}
 		println(doc.mkString())
 //		return // just test DocumentLattice.fromGrammar
 
