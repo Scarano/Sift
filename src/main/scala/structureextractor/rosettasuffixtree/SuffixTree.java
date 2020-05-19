@@ -13,13 +13,19 @@ public class SuffixTree<A> {
     List<A> seq;
     List<Node<A>> nodes = new ArrayList<>();
 
-    public SuffixTree(List<A> seq) {
-        this.seq = seq;
+    public SuffixTree(List<A> seq, A endOfSeq) {
+        this.seq = new ArrayList<>(seq.size()+1);
+        this.seq.addAll(seq);
+        this.seq.add(endOfSeq);
         nodes.add(new Node<>(this));
         for (int i = 0; i < seq.size(); ++i) {
             addSuffix(i);
         }
         nodes.get(0).populateDepth(0);
+    }
+
+    public static SuffixTree<String> ofString(List<String> seq) {
+        return new SuffixTree<>(seq, "◆");
     }
 
     private void addSuffix(int from) {
@@ -118,7 +124,7 @@ public class SuffixTree<A> {
     	ArrayList<Character> sChars = new ArrayList<>(s.length());
     	for (char c: s.toCharArray())
     	    sChars.add(c);
-      SuffixTree<Character> stree = new SuffixTree<>(sChars);
+      SuffixTree<Character> stree = new SuffixTree<>(sChars, '◆');
 
       stree.visualize();
 

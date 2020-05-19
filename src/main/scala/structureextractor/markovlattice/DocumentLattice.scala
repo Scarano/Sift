@@ -105,8 +105,8 @@ object DocumentLattice {
 		val maxArcLen = tokens.length / maxArcRatio
 		val minFreq = maxArcRatio/2 // TODO make this a parameter
 
-		val finder = new SubsequenceFinder(maxArcLen, minFreq, alpha)
-		val substrings = finder.subsequences(tokens, allowThreshold)
+		val finder = new SubsequenceFinder(maxArcLen, minFreq, allowThreshold)
+		val substrings = finder.subsequences(tokens)
 
 		val arcs: Array[List[AArc[String]]] = Array.tabulate(tokens.length) { t =>
 			List(labels(t) match {

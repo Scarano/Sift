@@ -1,12 +1,10 @@
 package structureextractor
 
-import java.util
-
-import structureextractor.rosettasuffixtree.{Node, SuffixTree}
-import structureextractor.util.ResultTree
-
 import collection.JavaConverters._
-import scala.collection.mutable
+
+import structureextractor.rosettasuffixtree.{Node, ReversedSuffixTree, SuffixTree}
+import structureextractor.util.ResultTree
+import structureextractor.util.MaxOption._
 
 
 case class ScoredSubstring(start: Int, end: Int, occurrences: Seq[Int], score: Double) {
@@ -16,13 +14,19 @@ case class ScoredSubstring(start: Int, end: Int, occurrences: Seq[Int], score: D
 
 class SubsequenceFinder(maxLen: Int,
                         minFreq: Int,
-                        alpha: Double,
+                        minScore: Double,
 ) {
 
-	def substringScore(c_whole: Int, c_lhs: Int, c_rhs: Int): Double =
-		c_whole / (math.max(c_lhs, c_rhs) + alpha)
+	def substringScore(c_whole: Int, c_lhs: Int, c_lhs_max: Int, c_rhs: Int, c_rhs_max: Int)
+	: Double = {
+		println(s"  substringScore($c_whole, $c_lhs, $c_lhs_max, $c_rhs, $c_rhs_max)")
+		val score_lhs = c_whole.toDouble / c_lhs * (1.0 - c_lhs_max.toDouble / c_whole)
+		val score_rhs = c_whole.toDouble / c_rhs * (1.0 - c_rhs_max.toDouble / c_whole)
+		println(s"    => min($score_lhs, $score_rhs) = ${math.min(score_lhs, score_rhs)}")
+		math.min(score_lhs, score_rhs)
+	}
 
-//	def scoredSubstringsFromNodeMut(node: Node[String], parent: Node[String], rhsStart: Int,
+	//	def scoredSubstringsFromNodeMut(node: Node[String], parent: Node[String], rhsStart: Int,
 //	                                minScore: Double,
 //	                                acc: mutable.ListBuffer[ScoredSubstring])
 //	: Unit = {
@@ -43,21 +47,22 @@ class SubsequenceFinder(maxLen: Int,
 //			scoredSubstringsFromNodeMut(child, node, rhsStart, minScore, acc)
 //	}
 
-	def scoredSubstringsFromNode(node: Node[String], minScore: Double)
+	def scoredSubstringsFromNode(node: Node[String], revTree: ReversedSuffixTree[String])
 	: ResultTree[ScoredSubstring] = {
 		val childResults =
 			for (child <- node.getChildren.asScala) yield
-				scoredSubstringsFromNode(child, node, child.getLength, minScore)
+				scoredSubstringsFromNode(child, node, child.getLength, revTree)
 		ResultTree(Nil, childResults.toList)
 	}
 	def scoredSubstringsFromNode(node: Node[String], parent: Node[String], rhsOffset: Int,
-	                             minScore: Double)
+	                             revTree: ReversedSuffixTree[String])
 	: ResultTree[ScoredSubstring]	= {
 
 		println("ScoredSubstringsFromNode(" +
 				s"${node.getEnd - node.getDepth} -> ${node.getEnd}, " +
-				s"${parent.getEnd - parent.getDepth} -> ${parent.getEnd}," +
-				s" $rhsOffset")
+				s"${parent.getEnd - parent.getDepth} -> ${parent.getEnd}, " +
+				s"$rhsOffset" +
+		    ")")
 
 		if (node.getDepth > maxLen)
 			return ResultTree.empty
@@ -65,16 +70,20 @@ class SubsequenceFinder(maxLen: Int,
 		if (node.getCount < minFreq)
 			return ResultTree.empty
 
-		val rhsStart = node.getEnd - node.getDepth + rhsOffset
+		val rhsStart = node.getEnd - node.getDepth + rhsOffset // TODO shoudl i always use 1 instead of rhsOffset?
 		val newSubstring =
 			if (node.getDepth <= rhsOffset)
 				Nil
 			else {
 				val c_whole = node.getCount
-				val c_lhs = parent.getCount
-				val c_rhs = node.getTree.lookup(rhsStart, node.getEnd).getCount
-				val score = substringScore(c_whole, c_lhs, c_rhs)
-//				println(s"  $c_whole / (max($c_lhs + $c_rhs) + alpha) = $score")
+				val c_lhs = node.getTree.lookup(rhsStart, node.getEnd).getCount // TODO can this just use revtree node too?
+				val c_lhs_max = revTree.lookup(rhsStart, node.getEnd).getChildren.asScala
+						.map(_.getCount).maxOption.getOrElse(0)
+				val c_rhs = parent.getCount
+				val c_rhs_max = node.getChildren.asScala
+						.map(_.getCount).maxOption.getOrElse(0)
+				val score = substringScore(c_whole, c_lhs, c_lhs_max, c_rhs, c_rhs_max)
+				println(s"  $c_whole / (max($c_lhs + $c_rhs) + alpha) = $score")
 				if (score < minScore)
 					Nil
 				else
@@ -84,16 +93,19 @@ class SubsequenceFinder(maxLen: Int,
 
 		val childResults =
 			for (child <- node.getChildren.asScala) yield
-				scoredSubstringsFromNode(child, node, rhsOffset, minScore)
+				scoredSubstringsFromNode(child, node, rhsOffset, revTree)
 
 		ResultTree(newSubstring, childResults.toList)
 	}
 
-	def subsequences(tokens: IndexedSeq[String], minScore: Double): Seq[ScoredSubstring] = {
+	def subsequences(tokens: IndexedSeq[String]): Seq[ScoredSubstring] = {
 
-		val sTree = new SuffixTree[String](tokens.asJava)
+		val tokenList = tokens.asJava
+		val sTree = SuffixTree.ofString(tokenList)
+		val revTree = ReversedSuffixTree.ofString(tokenList)
+//		revTree.visualize()
 
-		scoredSubstringsFromNode(sTree.getRoot, minScore).toList
+		scoredSubstringsFromNode(sTree.getRoot, revTree).toList
 	}
 }
 
@@ -125,11 +137,11 @@ object SubsequenceFinder {
 
 		val tokens: IndexedSeq[String] = string.split("")
 
-		val sTree = new SuffixTree[String](tokens.asJava)
+		val sTree = SuffixTree.ofString(tokens.asJava)
 		sTree.visualize()
 
-		val finder = new SubsequenceFinder(20, 2, 1.0)
-		val subseqs = finder.subsequences(tokens, 0.1)
+		val finder = new SubsequenceFinder(20, 2, 0.0)
+		val subseqs = finder.subsequences(tokens)
 		for (subseq <- subseqs.sortBy(-_.score))
 			println(subseq.toString(tokens))
 	}
