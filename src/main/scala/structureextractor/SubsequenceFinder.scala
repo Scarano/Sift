@@ -19,10 +19,10 @@ class SubsequenceFinder(maxLen: Int,
 
 	def substringScore(c_whole: Int, c_lhs: Int, c_lhs_max: Int, c_rhs: Int, c_rhs_max: Int)
 	: Double = {
-		println(s"  substringScore($c_whole, $c_lhs, $c_lhs_max, $c_rhs, $c_rhs_max)")
+//		println(s"  substringScore($c_whole, $c_lhs, $c_lhs_max, $c_rhs, $c_rhs_max)")
 		val score_lhs = c_whole.toDouble / c_lhs * (1.0 - c_lhs_max.toDouble / c_whole)
 		val score_rhs = c_whole.toDouble / c_rhs * (1.0 - c_rhs_max.toDouble / c_whole)
-		println(s"    => min($score_lhs, $score_rhs) = ${math.min(score_lhs, score_rhs)}")
+//		println(s"    => min($score_lhs, $score_rhs) = ${math.min(score_lhs, score_rhs)}")
 		math.min(score_lhs, score_rhs)
 	}
 
@@ -58,11 +58,11 @@ class SubsequenceFinder(maxLen: Int,
 	                             revTree: ReversedSuffixTree[String])
 	: ResultTree[ScoredSubstring]	= {
 
-		println("ScoredSubstringsFromNode(" +
-				s"${node.getEnd - node.getDepth} -> ${node.getEnd}, " +
-				s"${parent.getEnd - parent.getDepth} -> ${parent.getEnd}, " +
-				s"$rhsOffset" +
-		    ")")
+//		println("ScoredSubstringsFromNode(" +
+//				s"${node.getEnd - node.getDepth} -> ${node.getEnd}, " +
+//				s"${parent.getEnd - parent.getDepth} -> ${parent.getEnd}, " +
+//				s"$rhsOffset" +
+//		    ")")
 
 		if (node.getDepth > maxLen)
 			return ResultTree.empty
@@ -70,20 +70,22 @@ class SubsequenceFinder(maxLen: Int,
 		if (node.getCount < minFreq)
 			return ResultTree.empty
 
-		val rhsStart = node.getEnd - node.getDepth + rhsOffset // TODO shoudl i always use 1 instead of rhsOffset?
+		val lhsStart = node.getEnd - node.getDepth + 1
+		val rhsEnd = node.getEnd - 1
 		val newSubstring =
-			if (node.getDepth <= rhsOffset)
+			if (node.getDepth < 2)
 				Nil
 			else {
 				val c_whole = node.getCount
-				val c_lhs = node.getTree.lookup(rhsStart, node.getEnd).getCount // TODO can this just use revtree node too?
-				val c_lhs_max = revTree.lookup(rhsStart, node.getEnd).getChildren.asScala
-						.map(_.getCount).maxOption.getOrElse(0)
-				val c_rhs = parent.getCount
+				val c_lhs = node.getTree.lookup(lhsStart, node.getEnd).getCount // TODO can this just use revtree node too?
+				val revNode = revTree.lookup(node.getEnd - node.getDepth, node.getEnd)
+				val c_lhs_max = if (revNode.getDepth > node.getDepth) revNode.getCount
+												else revNode.getChildren.asScala.map(_.getCount).maxOption.getOrElse(0)
+//				val c_rhs = parent.getCount // TODO: should only look to parent if length == 1, right?
+				val c_rhs = node.getTree.lookup(node.getEnd-node.getDepth, rhsEnd).getCount
 				val c_rhs_max = node.getChildren.asScala
 						.map(_.getCount).maxOption.getOrElse(0)
 				val score = substringScore(c_whole, c_lhs, c_lhs_max, c_rhs, c_rhs_max)
-				println(s"  $c_whole / (max($c_lhs + $c_rhs) + alpha) = $score")
 				if (score < minScore)
 					Nil
 				else

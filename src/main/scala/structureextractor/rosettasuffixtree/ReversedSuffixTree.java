@@ -5,8 +5,11 @@ import java.util.List;
 
 public class ReversedSuffixTree<A> extends SuffixTree<A> {
 
+	int seqLength;
+
 	public ReversedSuffixTree(List<A> seq, A endOfSeq) {
 		super(reverse(seq), endOfSeq);
+		seqLength = seq.size();
 	}
 
 	public static ReversedSuffixTree<String> ofString(List<String> seq) {
@@ -16,7 +19,7 @@ public class ReversedSuffixTree<A> extends SuffixTree<A> {
 
 
   @Override public Node<A> lookup(int start, int end) {
-    return super.lookup(this.seq.size() - end, this.seq.size() - start);
+    return super.lookup(this.seqLength - end, this.seqLength - start);
   }
 
 	@Override public Node<A> lookup(List<A> query) {

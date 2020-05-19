@@ -115,6 +115,9 @@ object DocumentLattice {
 			})
 		}
 
+		for (ss <- substrings)
+			println(f"${ss.score}%.03f " + (ss.start to ss.end).map(tokens(_)).mkString(" "))
+
 		for (substring <- substrings;
 		     ScoredSubstring(start, end, occ, score) = substring;
 		     s = tokens.slice(start, end).mkString(" ");

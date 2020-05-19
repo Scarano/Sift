@@ -92,6 +92,7 @@ public class Node<A> {
         return occurrences;
     }
 
+    // TODO not tail-recursive
     public Node<A> lookup(int qStart, int qEnd) {
         int i = 0;
         while (true) {
