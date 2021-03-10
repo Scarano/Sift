@@ -84,8 +84,8 @@ object Experiment {
 			opt[Int]("states").action( (x, c) =>
 				c.copy(states = x)
 			)
-			opt[Boolean]("sequitur-lattice").action( (x, c) =>
-				c.copy(sequiturLattice = x)
+			opt[Unit]("sequitur-lattice").action( (_, c) =>
+				c.copy(sequiturLattice = true)
 			)
 			opt[Int]("max-arc-ratio").action( (x, c) =>
 				c.copy(maxArcRatio = x)
