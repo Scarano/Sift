@@ -59,8 +59,11 @@ object Experiment {
 				                 generateSimple: Seq[Int] = Seq(),
 				                 generateMulti: Seq[Int] = Seq(),
 				                 states: Int = 5,
-				                 sequiturLattice: Boolean = false,
+				                 maxArcLength: Int = 10,
+				                 subsequenceLattice: Boolean = false,
+				                 minArcFreq: Int = 5,
 				                 maxArcRatio: Int = 5,
+				                 sequiturLattice: Boolean = false,
 				                 allowThreshold: Double = 0.2,
 				                 enforceThreshold: Double = 0.8,
 				                 alpha: Double = 1.0,
@@ -84,11 +87,20 @@ object Experiment {
 			opt[Int]("states").action( (x, c) =>
 				c.copy(states = x)
 			)
-			opt[Unit]("sequitur-lattice").action( (_, c) =>
-				c.copy(sequiturLattice = true)
+			opt[Int]("max-arc-length").action( (x, c) =>
+				c.copy(maxArcLength = x)
+			)
+			opt[Unit]("subsequence-lattice").action( (_, c) =>
+				c.copy(subsequenceLattice = true)
+			)
+			opt[Int]("min-arc-freq").action( (x, c) =>
+				c.copy(minArcFreq = x)
 			)
 			opt[Int]("max-arc-ratio").action( (x, c) =>
 				c.copy(maxArcRatio = x)
+			)
+			opt[Unit]("sequitur-lattice").action( (_, c) =>
+				c.copy(sequiturLattice = true)
 			)
 			opt[Double]("allow-threshold").action( (x, c) =>
 				c.copy(allowThreshold = x)
@@ -143,11 +155,14 @@ object Experiment {
 				              grammar, config.allowThreshold, config.enforceThreshold, config.alpha,
 											labeledDoc.labels)
 			}
-			else {
-				DocumentLattice.fromTokens(
+			else if (config.subsequenceLattice) {
+				DocumentLattice.fromTokensUsingSubsequenceFinder(
 				              labeledDoc.tokens, config.maxArcRatio,
-				              config.allowThreshold, config.enforceThreshold, config.alpha,
+				              config.minArcFreq, config.allowThreshold, config.alpha,
 				              labeledDoc.labels)
+			}
+			else {
+				DocumentLattice.fromTokens(labeledDoc.tokens, config.maxArcLength, labeledDoc.labels)
 			}
 		println(doc.mkString())
 //		return // just test DocumentLattice.fromGrammar

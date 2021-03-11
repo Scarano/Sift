@@ -1,7 +1,6 @@
 package structureextractor.markovlattice
 
 import java.lang.Long
-
 import breeze.linalg.DenseMatrix
 import com.typesafe.scalalogging.Logger
 import gstlib.{GeneralizedSuffixTree, GeneralizedSuffixTreeBuilder}
@@ -9,7 +8,9 @@ import structureextractor.ScoredSubstring
 import structureextractor.{SubsequenceFinder, Vocab}
 
 import scala.annotation.tailrec
+import scala.collection.breakOut
 import scala.reflect.ClassTag
+import scala.math.min
 
 abstract class AArc[SYM] {
 	val sym: SYM
@@ -98,14 +99,33 @@ object DocumentLattice {
 			labelPartitions(labels, t + 1, u, t + 1, (start, t + 1) :: acc)
 	}
 
-	def fromTokens(tokens: Array[String], maxArcRatio: Int,
-	               allowThreshold: Double, enforceThreshold: Double, alpha: Double,
-                 labels: IndexedSeq[Option[Int]])
+	def fromTokens(tokens: Array[String], maxArcLength: Int, labels: IndexedSeq[Option[Int]])
+	: DocumentLattice[String] = {
+
+		val arcs: Array[List[AArc[String]]] = Array.tabulate(tokens.length) { start =>
+			(
+				for (end <- start + 1 to min(start + maxArcLength, tokens.length);
+		         s = tokens.slice(start, end).mkString(" ")
+			  ) yield {
+					// TODO verify arc does not cross label boundary
+					labels(start) match {
+						case Some(i) => LabeledArc(s, end, i)
+						case None => Arc(s, end)
+					}
+				}
+			) (breakOut)
+		}
+
+		DocumentLattice(arcs)
+	}
+
+	def fromTokensUsingSubsequenceFinder(tokens: Array[String], maxArcRatio: Int, minArcFreq: Int,
+	                                     allowThreshold: Double, alpha: Double,
+                                       labels: IndexedSeq[Option[Int]])
 	: DocumentLattice[String] = {
 		val maxArcLen = tokens.length / maxArcRatio
-		val minFreq = maxArcRatio/2 // TODO make this a parameter
 
-		val finder = new SubsequenceFinder(maxArcLen, minFreq, allowThreshold)
+		val finder = new SubsequenceFinder(maxArcLen, minArcFreq, allowThreshold)
 		val substrings = finder.subsequences(tokens)
 
 		val arcs: Array[List[AArc[String]]] = Array.tabulate(tokens.length) { t =>
