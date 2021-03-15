@@ -142,7 +142,8 @@ class StructuredDocumentModel[SYM](
 		* using forward-backward algorithm.
 		* @return tuple (new model, mean log likelihood)
 		*/
-	def reestimate(docs: Seq[DocumentLattice[SYM]]): (StructuredDocumentModel[SYM], Double) = {
+	def reestimate(docs: Seq[DocumentLattice[SYM]], arcLengthPenalty: Double = 0.0)
+	: (StructuredDocumentModel[SYM], Double) = {
 
 		var numDocs = 0
 		var sumLogPdoc = 0.0
@@ -153,8 +154,8 @@ class StructuredDocumentModel[SYM](
 		for (doc <- docs) {
       val (α, β, γ, logPdoc) = forwardBackward(doc)
 
-//			println(s"α = \n${α(0 to 2, ::)}\n...")
-//			println(s"β = \n${β(-3 to -1, ::)}\n...")
+//			println(s"α = \n${α(0 to 4, ::)}\n...")
+//			println(s"β = \n${β(-5 to -1, ::)}\n...")
 //			println(s"α = \n$α")
 //			println(s"β = \n$β")
 //			println(s"α * β = \n${α + β}")
@@ -184,25 +185,56 @@ class StructuredDocumentModel[SYM](
 					α(t, i) + transCost_ij + emitCost(i, vocab(arc.sym)) + β(u, j) - logPdoc
 				}
 //				println(s"ξ($t, $u) = \n$ξ_tu")
+//				println(s"exp ξ($t, $u) = \n${exp(ξ_tu)}")
 
 				// TODO - optimization opportunity(?): Instead of using softmax to convert back out of
 				//  log space on each iteration, just do ordinary addition here, and take the exp of the
 				//  sum after the loop.
 				transObs := softmax(transObs, ξ_tu)
 
-				val arcObs = DenseVector.tabulate(numStates) { i => γ(t, i) }
+				// Old version: The emission expectation is the probability of being in state i
+				// times the probability of being emitted from state i. The problem is that this doesn't
+				// favor long arcs when they're part of cheaper overall paths.
+//				val arcObs = γ(t, ::).t + emitCost(::, vocab(arc.sym))
+
+				// Marginalize over destination states j to get total expected observations of this arc
+				// at position t and state i.
+				val arcObs = softmax(ξ_tu, Axis._1)
+
+				// penalize long arcs
+				arcObs :-= DenseVector.fill(arcObs.length) { arcLengthPenalty * (u - t) }
+
 				emitObs(::, vocab(arc.sym)) := softmax(emitObs(::, vocab(arc.sym)), arcObs)
 			}
 		}
 
+		// Hallucinate some observations and transitions to prevent numerical underflow
+		// TODO make this a parameter?
+		emitObs := softmax(emitObs, DenseMatrix.fill(emitObs.rows, emitObs.cols) {-20.0})
+		transObs := softmax(transObs, DenseMatrix.fill(transObs.rows, transObs.cols) {-20.0})
+
+//		println("emitObs = \n" +
+//			(0 until emitObs.cols).map(v => {
+//				(0 until emitObs.rows).map( i => {
+//					f"${exp(emitObs(i, v))}%10.7f "
+//				}).mkString + "  " + vocab(v)
+//			}).mkString("\n"))
+
 		val meanDocEntropy = -sumLogPdoc / numDocs
 //		println(s"Mean doc entropy = $meanDocEntropy")
+
+		val newTransCost = transObs(::, *) - softmax(transObs, Axis._1)
+		val newEmitCost = emitObs(::, *) - softmax(emitObs, Axis._1)
+
+		// interpolate between old model and re-estimated model. (This is kind of like a learning
+		// rate parameter.)
+		val λ = 0.5 // TODO: make this a parameter
 
 		val newModel = new StructuredDocumentModel[SYM](
 			vocab,
 			initObs - softmax(initObs),
-			transObs(::, *) - softmax(transObs, Axis._1),
-			emitObs(::, *) - softmax(emitObs, Axis._1)
+			λ*newTransCost + (1-λ)*transCost,
+			λ*newEmitCost + (1-λ)*emitCost
 		)
 
 		(newModel, meanDocEntropy)
@@ -214,31 +246,38 @@ class StructuredDocumentModel[SYM](
 			               strategy: TrainingStrategy = FB,
 			               maxEpochs: Int = 99,
 			               tol: Double = 1e-5,
-			               prevEntropies: List[Double] = List.empty[Double]
+			               arcLengthPenalty: Double = 2.0,
+			               prevCrossentropies: List[Double] = List.empty[Double]
   ): (StructuredDocumentModel[SYM], List[Double]) = {
-		val (newModel, meanEntropy) = strategy match {
-			case FB | FBThenViterbi => reestimate(docs)
+		val (newModel, meanCrossentropy) = strategy match {
+			case FB | FBThenViterbi => reestimate(docs, arcLengthPenalty)
 			case Viterbi => reestimateViterbi(docs)
 		}
-		val newEntropyList = meanEntropy :: prevEntropies
+		val newCrossentropyList = meanCrossentropy :: prevCrossentropies
 		if (maxEpochs == 1)
-			return (newModel, newEntropyList)
-		prevEntropies match {
+			return (newModel, newCrossentropyList)
+		prevCrossentropies match {
 			case prevEntropy :: _ =>
-				if (abs(prevEntropy - meanEntropy) < tol) {
+				if (abs(prevEntropy - meanCrossentropy) < tol) {
 					if (strategy == FBThenViterbi)
-						newModel.train(docs, Viterbi, maxEpochs - 1, tol, newEntropyList)
+						newModel.train(docs, Viterbi, maxEpochs - 1, tol, arcLengthPenalty,
+							             newCrossentropyList)
 					else
-						(newModel, newEntropyList)
+						(newModel, newCrossentropyList)
 				}
 				else {
-					if (prevEntropy < meanEntropy) {
-						println(s"Warning: entropy increased: $newEntropyList")
-						//				(this, prevEntropies)
-					}
-					newModel.train(docs, strategy, maxEpochs - 1, tol, newEntropyList)
+					val newArcLengthPenalty = if (prevEntropy > meanCrossentropy) arcLengthPenalty
+						else {
+							val newValue = max(0.0, arcLengthPenalty - 0.25)
+							println(s"Entropy increased ($prevEntropy -> $meanCrossentropy). " +
+									s"Reducing arc length penalty to $newValue.")
+							newValue
+						}
+					newModel.train(docs, strategy, maxEpochs - 1, tol, newArcLengthPenalty,
+						             newCrossentropyList)
 				}
-			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol, newEntropyList)
+			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol, arcLengthPenalty,
+				                       newCrossentropyList)
 		}
 	}
 
@@ -467,8 +506,8 @@ object StructuredDocumentModel {
 		// TODO make initial state distribution prefer remaining in the same state?
 		val p_init = uniformDist(numStates)
 //		val p_trans = uniformDistRows(numStates, numStates)
-		val p_trans = randomDistRows(numStates, numStates, randBasis.uniform) * 0.2 + 0.8/numStates
-		val p_emit = randomDistRows(numStates, vocab.size, randBasis.uniform) * 0.2 + 0.8/vocab.size
+		val p_trans = randomDistRows(numStates, numStates, randBasis.uniform) * 0.01 + 0.99/numStates
+		val p_emit = randomDistRows(numStates, vocab.size, randBasis.uniform) * 0.01 + 0.99/vocab.size
 		new StructuredDocumentModel[SYM](vocab, log(p_init), log(p_trans), log(p_emit))
 	}
 

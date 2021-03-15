@@ -1,0 +1,5 @@
+sbt "runMain structureextractor.markovlattice.StructuredDocumentModel --generate-multi 20 --states 7 --allow-threshold 1.0 --enforce-threshold 1.0 --alpha 1.0 --label-coverage 0.9 --max-epochs 1" > debut-multi-epoch1.txt
+time sbt "runMain Ebay data/rewgic-sold-2020-04-18-p1-pretty.html data/rewgic-sold-2020-04-18-p1-labeled.html"
+time sbt "runMain EbayTSV  data/rewgic-sold-2020-04-18-p1-labeled.html data/rewgic-sold-2020-04-18-p1.tsv "
+
+runMain structureextractor.markovlattice.Experiment --input "a b c x a b c y a b c z a b c z a b c y a b c x a b c" --states 3 --max-arc-length 6 --max-epochs 100

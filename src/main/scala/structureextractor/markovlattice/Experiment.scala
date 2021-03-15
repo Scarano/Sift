@@ -59,6 +59,7 @@ object Experiment {
 				                 generateSimple: Seq[Int] = Seq(),
 				                 generateMulti: Seq[Int] = Seq(),
 				                 states: Int = 5,
+				                 strategy: TrainingStrategy = FB,
 				                 maxArcLength: Int = 10,
 				                 subsequenceLattice: Boolean = false,
 				                 minArcFreq: Int = 5,
@@ -86,6 +87,16 @@ object Experiment {
 			)
 			opt[Int]("states").action( (x, c) =>
 				c.copy(states = x)
+			)
+			opt[String]("strategy").action( (x, c) =>
+				if (x == "fb")
+					c.copy(strategy = FB)
+				else if (x == "viterbi")
+					c.copy(strategy = Viterbi)
+				else if (x == "hybrid")
+					c.copy(strategy = FBThenViterbi)
+				else
+					throw new Exception(s"Invalid strategy '$x'")
 			)
 			opt[Int]("max-arc-length").action( (x, c) =>
 				c.copy(maxArcLength = x)
@@ -171,10 +182,11 @@ object Experiment {
 
 		val initialModel = StructuredDocumentModel.randomInitial(
 			config.states, DocumentLattice.buildVocab(docs))
-		val (newModel, entropyLog) = initialModel.train(docs, FB, config.maxEpochs, config.tolerance)
+		val (newModel, crossentropyLog) =
+			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance)
 		println(s"\nfinal model:\n$newModel")
-		println(s"\nIterations: ${entropyLog.size}")
-		println(s"Entropy log: $entropyLog")
+		println(s"\nIterations: ${crossentropyLog.size}")
+		println(s"Cross-entropy log: $crossentropyLog")
 		println()
 //		println(newModel.viterbiChart(docs.head).toString)
 		println(newModel.viterbiChart(docs.head).pathInfo())
