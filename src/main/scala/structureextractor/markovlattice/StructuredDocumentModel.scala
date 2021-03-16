@@ -246,7 +246,7 @@ class StructuredDocumentModel[SYM](
 			               strategy: TrainingStrategy = FB,
 			               maxEpochs: Int = 99,
 			               tol: Double = 1e-5,
-			               arcLengthPenalty: Double = 2.0,
+			               arcLengthPenalty: Double = 0.0,
 			               prevCrossentropies: List[Double] = List.empty[Double]
   ): (StructuredDocumentModel[SYM], List[Double]) = {
 		val (newModel, meanCrossentropy) = strategy match {

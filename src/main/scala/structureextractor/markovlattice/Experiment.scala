@@ -61,6 +61,7 @@ object Experiment {
 				                 states: Int = 5,
 				                 strategy: TrainingStrategy = FB,
 				                 maxArcLength: Int = 10,
+				                 arcLengthPenalty: Double = 0.0,
 				                 subsequenceLattice: Boolean = false,
 				                 minArcFreq: Int = 5,
 				                 maxArcRatio: Int = 5,
@@ -100,6 +101,9 @@ object Experiment {
 			)
 			opt[Int]("max-arc-length").action( (x, c) =>
 				c.copy(maxArcLength = x)
+			)
+			opt[Double]("arc-length-penalty").action( (x, c) =>
+				c.copy(arcLengthPenalty = x)
 			)
 			opt[Unit]("subsequence-lattice").action( (_, c) =>
 				c.copy(subsequenceLattice = true)
@@ -183,7 +187,8 @@ object Experiment {
 		val initialModel = StructuredDocumentModel.randomInitial(
 			config.states, DocumentLattice.buildVocab(docs))
 		val (newModel, crossentropyLog) =
-			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance)
+			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
+				                 config.arcLengthPenalty)
 		println(s"\nfinal model:\n$newModel")
 		println(s"\nIterations: ${crossentropyLog.size}")
 		println(s"Cross-entropy log: $crossentropyLog")
