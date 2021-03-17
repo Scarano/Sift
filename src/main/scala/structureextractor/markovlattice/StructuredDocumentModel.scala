@@ -228,7 +228,7 @@ class StructuredDocumentModel[SYM](
 
 		// interpolate between old model and re-estimated model. (This is kind of like a learning
 		// rate parameter.)
-		val λ = 0.5 // TODO: make this a parameter
+		val λ = 0.9 // TODO: make this a parameter
 
 		val newModel = new StructuredDocumentModel[SYM](
 			vocab,
@@ -266,14 +266,14 @@ class StructuredDocumentModel[SYM](
 						(newModel, newCrossentropyList)
 				}
 				else {
-					val newArcLengthPenalty = if (prevEntropy > meanCrossentropy) arcLengthPenalty
-						else {
-							val newValue = max(0.0, arcLengthPenalty - 0.25)
-							println(s"Entropy increased ($prevEntropy -> $meanCrossentropy). " +
-									s"Reducing arc length penalty to $newValue.")
-							newValue
-						}
-					newModel.train(docs, strategy, maxEpochs - 1, tol, newArcLengthPenalty,
+//					val newArcLengthPenalty = if (prevEntropy > meanCrossentropy) arcLengthPenalty
+//						else {
+//							val newValue = max(0.0, arcLengthPenalty - 0.25)
+//							println(s"Entropy increased ($prevEntropy -> $meanCrossentropy). " +
+//									s"Reducing arc length penalty to $newValue.")
+//							newValue
+//						}
+					newModel.train(docs, strategy, maxEpochs - 1, tol, arcLengthPenalty,
 						             newCrossentropyList)
 				}
 			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol, arcLengthPenalty,
