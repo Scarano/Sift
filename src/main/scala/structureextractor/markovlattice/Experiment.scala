@@ -186,12 +186,12 @@ object Experiment {
 
 		val initialModel = StructuredDocumentModel.randomInitial(
 			config.states, DocumentLattice.buildVocab(docs))
-		val (newModel, crossentropyLog) =
+		val (newModel, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
 				                 config.arcLengthPenalty)
 		println(s"\nfinal model:\n$newModel")
-		println(s"\nIterations: ${crossentropyLog.size}")
-		println(s"Cross-entropy log: $crossentropyLog")
+		println(s"\nIterations: ${lossLog.size}")
+		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.3f")).mkString(" "))
 		println()
 //		println(newModel.viterbiChart(docs.head).toString)
 		println(newModel.viterbiChart(docs.head).pathInfo())

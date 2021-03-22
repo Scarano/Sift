@@ -228,7 +228,7 @@ class StructuredDocumentModel[SYM](
 
 		// interpolate between old model and re-estimated model. (This is kind of like a learning
 		// rate parameter.)
-		val λ = 0.9 // TODO: make this a parameter
+		val λ = 1.0 // TODO: make this a parameter
 
 		val newModel = new StructuredDocumentModel[SYM](
 			vocab,
@@ -281,7 +281,8 @@ class StructuredDocumentModel[SYM](
 		}
 	}
 
-	def reestimateViterbi(docs: Seq[DocumentLattice[SYM]]): (StructuredDocumentModel[SYM], Double) = {
+	def reestimateViterbi(docs: Seq[DocumentLattice[SYM]])
+	: (StructuredDocumentModel[SYM], Double) = {
 
 		var numDocs = 0
 		var sumLogPpath = 0.0
@@ -503,11 +504,9 @@ object StructuredDocumentModel {
 		 : StructuredDocumentModel[SYM]	=
 	{
 		val randBasis = RandBasis.withSeed(seed)
-		// TODO make initial state distribution prefer remaining in the same state?
-		val p_init = uniformDist(numStates)
-//		val p_trans = uniformDistRows(numStates, numStates)
-		val p_trans = randomDistRows(numStates, numStates, randBasis.uniform) * 0.01 + 0.99/numStates
-		val p_emit = randomDistRows(numStates, vocab.size, randBasis.uniform) * 0.01 + 0.99/vocab.size
+		val p_init = linspace(0.75, 0.25, numStates)
+		val p_trans = randomDistRows(numStates, numStates, randBasis.uniform) * 0.1 + 0.9/numStates
+		val p_emit = randomDistRows(numStates, vocab.size, randBasis.uniform) * 0.1 + 0.9/vocab.size
 		new StructuredDocumentModel[SYM](vocab, log(p_init), log(p_trans), log(p_emit))
 	}
 
