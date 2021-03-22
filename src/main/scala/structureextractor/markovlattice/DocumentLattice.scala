@@ -15,9 +15,10 @@ import scala.math.min
 abstract class AArc[SYM] {
 	val sym: SYM
 	val target: Int
+	val cost: Double
 }
-case class Arc[SYM](sym: SYM, target: Int) extends AArc[SYM]
-case class LabeledArc[SYM](sym: SYM, target: Int, label: Int) extends AArc[SYM]
+case class Arc[SYM](sym: SYM, target: Int, cost: Double = 0.0) extends AArc[SYM]
+case class LabeledArc[SYM](sym: SYM, target: Int, cost: Double = 0.0, label: Int) extends AArc[SYM]
 
 case class DocumentLattice[SYM](arcs: Array[List[AArc[SYM]]]) {
 	/**
@@ -36,7 +37,7 @@ case class DocumentLattice[SYM](arcs: Array[List[AArc[SYM]]]) {
 	val nonfinalNodes: Range = 0 until finalNode
 
 	val labels: Array[Integer] = arcs map {
-		case LabeledArc(_, _, label) :: _ => Integer.valueOf(label)
+		case LabeledArc(_, _, _, label) :: _ => Integer.valueOf(label)
 		case _ => null
 	}
 
@@ -53,8 +54,10 @@ case class DocumentLattice[SYM](arcs: Array[List[AArc[SYM]]]) {
 		val arcStrings =
 			for (source <- nonfinalNodes; arc <- arcs(source))
 				yield arc match {
-					case Arc(sym, target) => s"$source -> $target ( ) [${sym.toString}]"
-					case LabeledArc(sym, target, label) => s"$source -> $target ($label) [${sym.toString}]"
+					case Arc(sym, target, _) =>
+						s"$source -> $target ( ) [${sym.toString}]"
+					case LabeledArc(sym, target, _, label) =>
+						s"$source -> $target ($label) [${sym.toString}]"
 				}
 		arcStrings.mkString(sep)
 	}
@@ -109,8 +112,8 @@ object DocumentLattice {
 			  ) yield {
 					// TODO verify arc does not cross label boundary
 					labels(start) match {
-						case Some(i) => LabeledArc(s, end, i)
-						case None => Arc(s, end)
+						case Some(i) => LabeledArc(s, end, end - start - 1.0, i)
+						case None => Arc(s, end, end - start - 1.0)
 					}
 				}
 			) (breakOut)
@@ -130,11 +133,12 @@ object DocumentLattice {
 
 		val arcs: Array[List[AArc[String]]] = Array.tabulate(tokens.length) { t =>
 			List(labels(t) match {
-				case Some(i) => LabeledArc(tokens(t), t+1, i)
-				case None => Arc(tokens(t), t+1)
+				case Some(i) => LabeledArc(tokens(t), t+1, 0.0, i)
+				case None => Arc(tokens(t), t+1, 0.0)
 			})
 		}
 
+		println()
 		for (ss <- substrings)
 			println(f"${ss.score}%.03f " + (ss.start to ss.end).map(tokens(_)).mkString(" "))
 
@@ -146,8 +150,8 @@ object DocumentLattice {
     ) {
 			// TODO verify arc does not cross label boundary
 			arcs(t) ::= (labels(t) match {
-				case Some(i) => LabeledArc(s, u, i)
-				case None => Arc(s, u)
+				case Some(i) => LabeledArc(s, u, u - t - 1.0, i)
+				case None => Arc(s, u, u - t - 1.0)
 			})
 		}
 		DocumentLattice(arcs)
@@ -160,7 +164,7 @@ object DocumentLattice {
 		for ((source, target, str) <- grammar.root.arcs(allowThreshold, enforceThreshold, alpha)
 		                                if target - source < grammar.tokens.length // exclude root
     ) {
-			arcs(source) ::= Arc(str, target)
+			arcs(source) ::= Arc(str, target, target - source - 1.0)
 		}
 		DocumentLattice(arcs)
 	}
@@ -177,8 +181,8 @@ object DocumentLattice {
     ) {
 			val s = if (t == source && u == target) str else grammar.tokens.slice(t, u).mkString(" ")
 			arcs(t) ::= (labels(t) match {
-				case Some(i) => LabeledArc(s, u, i)
-				case None => Arc(s, u)
+				case Some(i) => LabeledArc(s, u, target - source - 1.0, i)
+				case None => Arc(s, u, target - source - 1.0)
 			})
 		}
 		DocumentLattice(arcs)

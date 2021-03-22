@@ -191,7 +191,7 @@ object Experiment {
 				                 config.arcLengthPenalty)
 		println(s"\nfinal model:\n$newModel")
 		println(s"\nIterations: ${lossLog.size}")
-		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.3f")).mkString(" "))
+		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
 		println()
 //		println(newModel.viterbiChart(docs.head).toString)
 		println(newModel.viterbiChart(docs.head).pathInfo())

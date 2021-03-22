@@ -1,11 +1,10 @@
 package structureextractor.markovlattice
 
 import scala.annotation.tailrec
-import scala.collection.mutable
+import scala.collection.{mutable, breakOut}
 import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.distributions.{Rand, RandBasis}
-
 import structureextractor.{Util, Vocab}
 import structureextractor.Util.abbreviate
 
@@ -59,7 +58,7 @@ class StructuredDocumentModel[SYM](
 		* Note that when the doc has labels, the probabilities are additionally conditionalized on
 		* the labeling.
 		*/
-	def forward(doc: DocumentLattice[SYM]): DenseMatrix[Double] = {
+	def forward(doc: DocumentLattice[SYM], arcLengthPenalty: Double = 0.0): DenseMatrix[Double] = {
 
 		val α = DenseMatrix.fill(doc.numNodes, numStates) {
 			Double.NegativeInfinity
@@ -79,7 +78,8 @@ class StructuredDocumentModel[SYM](
 					0.0
 				else
 					Double.NegativeInfinity
-			val cost = α(t, i) + transCost_ij + emitCost(i, vocab(arc.sym))
+			val arcCost = emitCost(i, vocab(arc.sym)) - arcLengthPenalty * arc.cost
+			val cost = α(t, i) + transCost_ij + arcCost
 //			println(s"$t S$i -> α($u S$j) += $cost " +
 //					s"(${α(t, i)} + $transCost_ij + ${emitCost(i, vocab(arc.sym))} " +
 //						s"[emitCost($i, ${vocab(arc.sym)})])")
@@ -100,7 +100,7 @@ class StructuredDocumentModel[SYM](
 		* Note that when the doc has labels, all probabilities are additionally conditionalized on
 		* the labeling.
 		*/
-	def forwardBackward(doc: DocumentLattice[SYM])
+	def forwardBackward(doc: DocumentLattice[SYM], arcLengthPenalty: Double = 0.0)
 		: (DenseMatrix[Double], DenseMatrix[Double], DenseMatrix[Double], Double) =
 	{
 		val α = forward(doc)
@@ -118,14 +118,15 @@ class StructuredDocumentModel[SYM](
 		     j <- 0 until numStates
     ) {
 			val transCost_ij = arc match {
-				case LabeledArc(_, _, label) if label == i =>
+				case LabeledArc(_, _, _, label) if label == i =>
 					0.0
-				case LabeledArc(_, _, _) =>
+				case LabeledArc(_, _, _, _) =>
 					Double.NegativeInfinity
 				case _ =>
 					transCost(i, j)
 			}
-			val cost = transCost_ij + emitCost(i, vocab(arc.sym)) + β(u, j)
+			val arcCost = emitCost(i, vocab(arc.sym)) - arcLengthPenalty * arc.cost
+			val cost = transCost_ij + arcCost + β(u, j)
 //			println(s"β($t S$i) += $cost -> $u S$j ($transCost_ij + emitCost)")
 			β(t, i) = softmax(β(t, i), cost)
 		}
@@ -175,14 +176,15 @@ class StructuredDocumentModel[SYM](
 				val ξ_tu = DenseMatrix.tabulate(numStates, numStates) { case (i, j) =>
 					// TODO - remove redundant computation
 					val transCost_ij = arc match {
-						case LabeledArc(_, _, label) if label == i =>
+						case LabeledArc(_, _, _, label) if label == i =>
 							0.0
-						case LabeledArc(_, _, _) =>
+						case LabeledArc(_, _, _, _) =>
 							Double.NegativeInfinity
 						case _ =>
 							transCost(i, j)
 					}
-					α(t, i) + transCost_ij + emitCost(i, vocab(arc.sym)) + β(u, j) - logPdoc
+					val arcCost = emitCost(i, vocab(arc.sym)) - arcLengthPenalty * arc.cost
+					α(t, i) + transCost_ij + arcCost + β(u, j) - logPdoc
 				}
 //				println(s"ξ($t, $u) = \n$ξ_tu")
 //				println(s"exp ξ($t, $u) = \n${exp(ξ_tu)}")
@@ -202,7 +204,7 @@ class StructuredDocumentModel[SYM](
 				val arcObs = softmax(ξ_tu, Axis._1)
 
 				// penalize long arcs
-				arcObs :-= DenseVector.fill(arcObs.length) { arcLengthPenalty * (u - t) }
+//				arcObs :-= DenseVector.fill(arcObs.length) { arcLengthPenalty * (u - t) }
 
 				emitObs(::, vocab(arc.sym)) := softmax(emitObs(::, vocab(arc.sym)), arcObs)
 			}
@@ -216,7 +218,7 @@ class StructuredDocumentModel[SYM](
 //		println("emitObs = \n" +
 //			(0 until emitObs.cols).map(v => {
 //				(0 until emitObs.rows).map( i => {
-//					f"${exp(emitObs(i, v))}%10.7f "
+//					f"${exp(emitObs(i, v))}%15.7f "
 //				}).mkString + "  " + vocab(v)
 //			}).mkString("\n"))
 
@@ -251,7 +253,7 @@ class StructuredDocumentModel[SYM](
   ): (StructuredDocumentModel[SYM], List[Double]) = {
 		val (newModel, meanCrossentropy) = strategy match {
 			case FB | FBThenViterbi => reestimate(docs, arcLengthPenalty)
-			case Viterbi => reestimateViterbi(docs)
+			case Viterbi => reestimateViterbi(docs, arcLengthPenalty)
 		}
 		val newCrossentropyList = meanCrossentropy :: prevCrossentropies
 		if (maxEpochs == 1)
@@ -273,6 +275,7 @@ class StructuredDocumentModel[SYM](
 //									s"Reducing arc length penalty to $newValue.")
 //							newValue
 //						}
+//					val newArcLengthPenalty = max(2.0, arcLengthPenalty - .5)
 					newModel.train(docs, strategy, maxEpochs - 1, tol, arcLengthPenalty,
 						             newCrossentropyList)
 				}
@@ -281,7 +284,7 @@ class StructuredDocumentModel[SYM](
 		}
 	}
 
-	def reestimateViterbi(docs: Seq[DocumentLattice[SYM]])
+	def reestimateViterbi(docs: Seq[DocumentLattice[SYM]], arcLengthPenalty: Double = 0.0)
 	: (StructuredDocumentModel[SYM], Double) = {
 
 		var numDocs = 0
@@ -291,7 +294,7 @@ class StructuredDocumentModel[SYM](
 		val emitObs = DenseMatrix.fill(numStates, vocab.size) { 1e-15 }
 
 		for (doc <- docs) {
-			val chart = viterbiChart(doc)
+			val chart = viterbiChart(doc, arcLengthPenalty)
 
 			numDocs += 1
 			sumLogPpath += chart.totalCost
@@ -319,7 +322,8 @@ class StructuredDocumentModel[SYM](
 	}
 
 
-	def viterbiChart(doc: DocumentLattice[SYM]): ViterbiChart[SYM] = {
+	def viterbiChart(doc: DocumentLattice[SYM], arcLengthPenalty: Double = 0.0)
+	: ViterbiChart[SYM] = {
 		val bestPrevNode = DenseMatrix.zeros[Int](doc.numNodes, numStates)
 		val bestPrevState = DenseMatrix.zeros[Int](doc.numNodes, numStates)
 		val bestCost = DenseMatrix.fill[Double](doc.numNodes, numStates) {Double.NegativeInfinity}
@@ -327,12 +331,13 @@ class StructuredDocumentModel[SYM](
 		for (node1 <- doc.nonfinalNodes;
 		     state1 <- 0 until numStates;
 		     arc <- doc.arcs(node1);
-		     start_cost = bestCost(node1, state1) + emitCost(state1, vocab(arc.sym));
+		     arcCost = emitCost(state1, vocab(arc.sym)) - arcLengthPenalty * arc.cost;
+		     startCost = bestCost(node1, state1) + arcCost;
 		     node2 = arc.target;
 		     state2 <- 0 until numStates)
 		{
 //			println(s"$node1 $state1 -> $node2 $state2 @ $start_cost")
-			val cost = start_cost + transCost(state1, state2)
+			val cost = startCost + transCost(state1, state2)
 			if (cost > bestCost(node2, state2)) {
 				bestCost(node2, state2) = cost
 				bestPrevState(node2, state2) = state1
@@ -411,7 +416,8 @@ case class ViterbiChart[SYM](
 //					f"$t%4d -> $u%4d " +
 					f"$t%4d " +
 //					f"${model.stateNames(i)}%17s -> ${model.stateNames(j)}%17s " +
-					f"${model.stateNames(i)}%17s " +
+//					f"${model.stateNames(i)}%17s " +
+					f"$i%3d " +
 					s"'$arcStr'"
 		transitionStrings.mkString("\n")
 	}
@@ -504,7 +510,10 @@ object StructuredDocumentModel {
 		 : StructuredDocumentModel[SYM]	=
 	{
 		val randBasis = RandBasis.withSeed(seed)
-		val p_init = linspace(0.75, 0.25, numStates)
+		val p_init = if (numStates == 1) DenseVector(1.0)
+			else DenseVector.tabulate(numStates) { i =>
+				if (i == 0) .9 else 0.1 / (numStates - 1)
+			}
 		val p_trans = randomDistRows(numStates, numStates, randBasis.uniform) * 0.1 + 0.9/numStates
 		val p_emit = randomDistRows(numStates, vocab.size, randBasis.uniform) * 0.1 + 0.9/vocab.size
 		new StructuredDocumentModel[SYM](vocab, log(p_init), log(p_trans), log(p_emit))
