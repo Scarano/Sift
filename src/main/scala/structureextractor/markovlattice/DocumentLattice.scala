@@ -3,12 +3,10 @@ package structureextractor.markovlattice
 import java.lang.Long
 import breeze.linalg.DenseMatrix
 import com.typesafe.scalalogging.Logger
-import gstlib.{GeneralizedSuffixTree, GeneralizedSuffixTreeBuilder}
 import structureextractor.ScoredSubstring
 import structureextractor.{SubsequenceFinder, Vocab}
 
 import scala.annotation.tailrec
-import scala.collection.breakOut
 import scala.reflect.ClassTag
 import scala.math.min
 
@@ -116,7 +114,7 @@ object DocumentLattice {
 						case None => Arc(s, end, end - start - 1.0)
 					}
 				}
-			) (breakOut)
+			).toList
 		}
 
 		DocumentLattice(arcs)

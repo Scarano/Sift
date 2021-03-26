@@ -2,7 +2,7 @@ package structureextractor.markovlattice
 
 import scala.annotation.tailrec
 import scala.collection.JavaConverters._
-import scala.collection.{breakOut, mutable}
+import scala.collection.mutable
 import scala.io.Source
 
 import breeze.linalg.{DenseVector, sum}

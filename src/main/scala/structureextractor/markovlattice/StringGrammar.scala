@@ -1,7 +1,5 @@
 package structureextractor.markovlattice
 
-import collection.breakOut
-
 import structureextractor.Util.abbreviate
 
 case class StringGrammar(tokens: IndexedSeq[String],
@@ -73,9 +71,9 @@ object StringGrammar {
 			val childArcs: Vector[(Int, Int, String)] = if (score >= enforceThreshold)
 				Vector.empty
 			else
-				children.zipWithIndex.flatMap { case (child, i) =>
+				children.zipWithIndex.view.flatMap { case (child, i) =>
 					child.arcs(allowThreshold, enforceThreshold, alpha, offset + childOffsets(i))
-				} (breakOut)
+				}.toVector
 
 //			println(s"Rule [${abbreviate(toString, 60)}]:")
 //			println("  own:   " + ownArcs.map({case (t, u, s) => s"($t, $u)"}).mkString("; "))

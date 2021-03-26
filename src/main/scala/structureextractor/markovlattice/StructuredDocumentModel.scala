@@ -1,7 +1,7 @@
 package structureextractor.markovlattice
 
 import scala.annotation.tailrec
-import scala.collection.{mutable, breakOut}
+import scala.collection.mutable
 import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.distributions.{Rand, RandBasis}

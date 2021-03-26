@@ -1,7 +1,6 @@
 package structureextractor
 
 import scala.annotation.tailrec
-import scala.collection.breakOut
 import scala.util.Random
 
 import structureextractor.PCFG._
@@ -58,12 +57,12 @@ object PCFG {
 
 	case class Prod(lhs: String, p: Double, rhs: Seq[String]) {
 		def generate(pcfg: PCFG, rand: Random): Vector[String] = {
-			rhs.flatMap { x =>
+			rhs.view.flatMap { x =>
 				pcfg.prods.get(x) match {
 					case None => Vector(x)
 					case Some(prods) => chooseUniform(prods, rand.nextDouble()).generate(pcfg, rand)
 				}
-			} (breakOut)
+			}.to(Vector)
 		}
 	}
 

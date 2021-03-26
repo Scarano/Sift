@@ -2,11 +2,13 @@ package structureextractor
 
 import scala.collection.mutable
 import scala.reflect.ClassTag
+import scala.jdk.CollectionConverters._
 
 class Vocab[SYM](val word_map: Array[SYM], val id_map: Map[SYM, Int]) {
+	val id_map_fast = new java.util.HashMap(id_map.asJava)
 	def size: Int = word_map.length
 
-	def apply(token: SYM): Int = id_map(token)
+	def apply(token: SYM): Int = id_map_fast.get(token)
 	def apply(id: Int): SYM = word_map(id)
 }
 
