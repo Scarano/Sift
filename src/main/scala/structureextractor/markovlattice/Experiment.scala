@@ -69,9 +69,10 @@ object Experiment {
 				                 allowThreshold: Double = 0.2,
 				                 enforceThreshold: Double = 0.8,
 				                 alpha: Double = 1.0,
-				                 labelCoverage: Double = 0.5,
+				                 labelCoverage: Double = 0.0,
 				                 tolerance: Double = 1e-5,
 				                 maxEpochs: Int = 99,
+				                 truncate: Option[Int] = None,
 		)
 		val parser = new scopt.OptionParser[Config]("StructuredDocumentModel") {
 			opt[String]("input").action( (x, c) =>
@@ -135,6 +136,9 @@ object Experiment {
 			opt[Int]("max-epochs").action( (x, c) =>
 				c.copy(maxEpochs = x)
 			)
+			opt[Int]("truncate").action( (x, c) =>
+				c.copy(truncate = Some(x))
+			)
 		}
 		val config = parser.parse(args, Config()) match {
 			case Some(c) => c
@@ -158,7 +162,7 @@ object Experiment {
 			                                 config.labelCoverage, new Random(0))
 		}
 		else if (config.inputFile != null)
-			LabeledDoc(Source.fromFile(config.inputFile), config.labelCoverage)
+			LabeledDoc(Source.fromFile(config.inputFile), config.labelCoverage, config.truncate)
 		else
 			LabeledDoc(config.input, config.labelCoverage)
 
@@ -179,23 +183,37 @@ object Experiment {
 			else {
 				DocumentLattice.fromTokens(labeledDoc.tokens, config.maxArcLength, labeledDoc.labels)
 			}
-		println(doc.mkString())
-//		return // just test DocumentLattice.fromGrammar
+//		println(doc.mkString())
+		println(doc.mkString(limit=400))
 
 		val docs = List(doc)
 
 		val initialModel = StructuredDocumentModel.randomInitial(
 			config.states, DocumentLattice.buildVocab(docs))
-		val (newModel, lossLog) =
+		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
 				                 config.arcLengthPenalty)
-		println(s"\nfinal model:\n$newModel")
+		println(s"\nfinal model:\n$model")
 		println(s"\nIterations: ${lossLog.size}")
 		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
 		println()
-//		println(newModel.viterbiChart(docs.head).toString)
-		println(newModel.viterbiChart(docs.head).pathInfo())
+//		println(model.viterbiChart(docs.head).toString)
+		println(model.viterbiChart(docs.head).pathInfo(20))
+//		println(model.viterbiChart(docs.head).pathInfo())
 
+		val filteredDocs = docs.map { doc => model.viterbiChart(doc).filterArcs() }
+
+		val fInitialModel = StructuredDocumentModel.randomInitial(
+			config.states, DocumentLattice.buildVocab(filteredDocs))
+		val (fModel, fLossLog) =
+			fInitialModel.train(filteredDocs, config.strategy, config.maxEpochs,
+			                                   config.tolerance, 0.0)
+		println(s"\nFiltered model:\n$fModel")
+		println(s"\nIterations: ${fLossLog.size}")
+		println(s"Loss log: " + fLossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
+		println()
+		println(fModel.viterbiChart(filteredDocs.head).pathInfo(20))
+//		println(fModel.viterbiChart(filteredDocs.head).pathInfo())
 
 //		ammonite.Main().run("tokens" → tokens, "text" → text, "doc" → doc)
 	}

@@ -156,12 +156,14 @@ class StructuredDocumentModel[SYM](
       val (α, β, γ, logPdoc) = forwardBackward(doc)
 
 //			println(s"α = \n${α(0 to 4, ::)}\n...")
-//			println(s"β = \n${β(-5 to -1, ::)}\n...")
+//			println(s"β = \n...\n${β(-5 to -1, ::)}\n")
+//			println(s"α = \n...\n${α(-5 to -1, ::)}\n")
+//			println(s"β = \n${β(0 to 4, ::)}\n...")
 //			println(s"α = \n$α")
 //			println(s"β = \n$β")
 //			println(s"α * β = \n${α + β}")
 //			println(s"γ = \n$γ")
-//			println(s"log P(doc) = $logPdoc")
+			println(s"log P(doc) = $logPdoc")
 
 			numDocs += 1
 			sumLogPdoc += logPdoc
@@ -260,7 +262,7 @@ class StructuredDocumentModel[SYM](
 			return (newModel, newCrossentropyList)
 		prevCrossentropies match {
 			case prevEntropy :: _ =>
-				if (abs(prevEntropy - meanCrossentropy) < tol) {
+				if (abs(1 - prevEntropy / meanCrossentropy) < tol) {
 					if (strategy == FBThenViterbi)
 						newModel.train(docs, Viterbi, maxEpochs - 1, tol, arcLengthPenalty,
 							             newCrossentropyList)
@@ -406,11 +408,11 @@ case class ViterbiChart[SYM](
 		case _ => throw new Exception("Bug. Don't call this on empty list.")
 	}
 
-	def pathInfo(): String = {
+	def pathInfo(limit: Int = Int.MaxValue): String = {
 		val transitionStrings =
-			for (((t, i), (u, j)) <- bestPath zip bestPath.tail;
+			for (((t, i), (u, j)) <- (bestPath zip bestPath.tail).take(limit);
 		       cost = bestCost(u, j) - bestCost(t, i);
-			     arcStr = abbreviate(doc.arcMap(t, u).sym.toString, 80))
+			     arcStr = abbreviate(doc.arcMap(t, u).sym.toString, 80, true))
 				yield
 					f"${-cost}%10.1f " +
 //					f"$t%4d -> $u%4d " +
@@ -420,6 +422,20 @@ case class ViterbiChart[SYM](
 					f"$i%3d " +
 					s"'$arcStr'"
 		transitionStrings.mkString("\n")
+	}
+
+	/**
+		* Create a new version of the [[DocumentLattice]] that has only the arcs used by the
+		* Viterbi path.
+		*
+		* @return new [[DocumentLattice]].
+		*/
+	def filterArcs(): DocumentLattice[SYM] = {
+		val arcs = Array.fill(doc.finalNode) {List.empty[AArc[SYM]]}
+		for (((t, _), (u, _)) <- bestPath zip (bestPath.tail ++ List(doc.finalNode))) {
+			arcs(t) = doc.arcs(t).filter(_.target == u)
+		}
+		new DocumentLattice[SYM](arcs)
 	}
 
 	override def toString: String = {

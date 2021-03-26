@@ -18,19 +18,24 @@ object LabeledDoc {
 		apply(tokens, coveredLabels, labelNames)
 	}
 
-	def apply(text: String, labelCoverage: Double = 1.0): LabeledDoc =
-		apply(List(text), labelCoverage)
+	def apply(text: String, labelCoverage: Double = 1.0, limit: Option[Int] = None): LabeledDoc =
+		apply(List(text), labelCoverage, limit)
 
-	def apply(data: TraversableOnce[String], labelCoverage: Double): LabeledDoc = {
+	def apply(data: TraversableOnce[String], labelCoverage: Double, limit: Option[Int])
+	: LabeledDoc = {
 		val tokenize = new Tokenizer(preserveWhitespace = false, breakOutDigits = true)
 		val rawTokens = data.flatMap(tokenize(_))
+		val rawTokenIter = limit match {
+			case None => rawTokens.toIterable
+			case Some(n) => rawTokens.toIterable.take(n)
+		}
 
 		val tokenBuffer = mutable.ArrayBuffer.empty[String]
 		val labelBuffer = mutable.ArrayBuffer.empty[Option[Int]]
 		val labelMap = mutable.LinkedHashMap.empty[String, Int]
 
 		var currentState: ReadState = Unlabeled
-		for (token <- rawTokens) {
+		for (token <- rawTokenIter) {
 			currentState match {
 				case Unlabeled =>
 					if (token == "❲")
@@ -60,8 +65,8 @@ object LabeledDoc {
 		LabeledDoc(tokenBuffer.toArray, labelBuffer.toArray, labelMap.keys.toArray, labelCoverage)
 	}
 
-	def apply(source: Source, labelCoverage: Double): LabeledDoc = {
-		try apply(source.getLines, labelCoverage) finally source.close
+	def apply(source: Source, labelCoverage: Double, limit: Option[Int]): LabeledDoc = {
+		try apply(source.getLines, labelCoverage, limit) finally source.close
 	}
 
 	def reduceLabelCoverage(labels: Array[Option[Int]], coverage: Double): Array[Option[Int]] = {

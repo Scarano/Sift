@@ -58,6 +58,6 @@ sourceGenerators in Test += Def.task {
 //}
 
 // Prevent sbt from forking when running Ammonite with `sbt test:run`
-Test / run / fork := false
+//Test / run / fork := false
 
 //////////////

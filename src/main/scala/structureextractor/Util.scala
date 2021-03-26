@@ -1,12 +1,13 @@
 package structureextractor
 
 object Util {
-	def abbreviate(s: String, maxLen: Int, ellipsis: String = "…"): String = {
+	def abbreviate(s: String, maxLen: Int, showLength: Boolean = false): String = {
 		if (s.length <= maxLen)
 			s
 		else {
-			val split = maxLen / 2
-			s.substring(0, split) + ellipsis + s.substring(s.length - (maxLen - split) + 1)
+			val gap = if (showLength) s"[…${s.length}…]" else "…"
+			val split = (maxLen - gap.length) / 2
+			s.substring(0, split) + gap + s.substring(s.length - (maxLen - split) + gap.length)
 		}
 	}
 	def printToFile(f: java.io.File)(op: java.io.PrintWriter => Unit) {

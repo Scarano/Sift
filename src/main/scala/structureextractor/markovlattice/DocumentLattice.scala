@@ -50,9 +50,9 @@ case class DocumentLattice[SYM](arcs: Array[List[AArc[SYM]]]) {
 		) yield ((source, arc.target), arc)
 	).toMap
 
-	def mkString(sep: String = "\n"): String = {
+	def mkString(sep: String = "\n", limit: Int = Int.MaxValue): String = {
 		val arcStrings =
-			for (source <- nonfinalNodes; arc <- arcs(source))
+			for (source <- nonfinalNodes.take(limit); arc <- arcs(source))
 				yield arc match {
 					case Arc(sym, target, _) =>
 						s"$source -> $target ( ) [${sym.toString}]"
