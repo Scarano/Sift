@@ -34,10 +34,10 @@ case object FBThenViterbi extends TrainingStrategy
 	* @param emitCost emitCost(i, w) is cost of emitting word w from state i.
 	*/
 class StructuredDocumentModel[SYM](
-  vocab: Vocab[SYM],
-  initCost: DenseVector[Double],
-  transCost: DenseMatrix[Double],
-  emitCost: DenseMatrix[Double] // should this be a Counter?
+  val vocab: Vocab[SYM],
+  val initCost: DenseVector[Double],
+  val transCost: DenseMatrix[Double],
+  val emitCost: DenseMatrix[Double]
 ) {
 	val numStates: Int = transCost.rows
 
@@ -379,94 +379,6 @@ class StructuredDocumentModel[SYM](
 		).mkString("\n")
 	}
 }
-
-/**
-	* Stores results of Viterbi search.
-	*
-	* The last arc of best path to doc node index t at state i is from node bestPrevNode(t, i) and
-	* state bestPrevState(t, i), and has cost (log prob) bestCost(t, i).
-	*/
-case class ViterbiChart[SYM](
-  model: StructuredDocumentModel[SYM],
-  doc: DocumentLattice[SYM],
-  bestPrevNode: DenseMatrix[Int],
-  bestPrevState: DenseMatrix[Int],
-  bestCost: DenseMatrix[Double]
-) {
-
-	lazy val finalState: Int = argmax(bestCost(doc.finalNode, ::))
-
-	lazy val bestPath: List[(Int, Int)] = bestPathEndingWith(List((doc.finalNode, finalState)))
-
-	lazy val totalCost: Double = bestCost(doc.finalNode, finalState)
-
-	@tailrec
-	private def bestPathEndingWith(subpath: List[(Int, Int)]): List[(Int, Int)] = subpath match {
-		case (0, _) :: _ => subpath
-		case (node, state) :: _ =>
-			bestPathEndingWith((bestPrevNode(node, state), bestPrevState(node, state)) :: subpath)
-		case _ => throw new Exception("Bug. Don't call this on empty list.")
-	}
-
-	def pathInfo(limit: Int = Int.MaxValue): String = {
-		val transitionStrings =
-			for (((t, i), (u, j)) <- (bestPath zip bestPath.tail).take(limit);
-		       cost = bestCost(u, j) - bestCost(t, i);
-			     arcStr = abbreviate(doc.arcMap(t, u).sym.toString, 80, true))
-				yield
-					f"${-cost}%10.1f " +
-//					f"$t%4d -> $u%4d " +
-					f"$t%4d " +
-//					f"${model.stateNames(i)}%17s -> ${model.stateNames(j)}%17s " +
-//					f"${model.stateNames(i)}%17s " +
-					f"$i%3d " +
-					s"'$arcStr'"
-		transitionStrings.mkString("\n")
-	}
-
-	/**
-		* Create a new version of the [[DocumentLattice]] that has only the arcs used by the
-		* Viterbi path.
-		*
-		* @return new [[DocumentLattice]].
-		*/
-	def filterArcs(): DocumentLattice[SYM] = {
-		val arcs = Array.fill(doc.finalNode) {List.empty[AArc[SYM]]}
-		for (((t, _), (u, _)) <- bestPath zip (bestPath.tail ++ List(doc.finalNode))) {
-			arcs(t) = doc.arcs(t).filter(_.target == u)
-		}
-		new DocumentLattice[SYM](arcs)
-	}
-
-	override def toString: String = {
-		val pathSet = bestPath.toSet
-		val nonInitialNodes = doc.nodes.tail
-		val lines = nonInitialNodes map { node =>
-			val cells: Seq[(String, String)] = (0 until model.numStates) map { state =>
-//				if (bestCost(node, state) == Double.NegativeInfinity) { // shouldn't happen?
-				if (bestCost(node, state) <= -9999) {
-					val placeholder = s"$state: (   ,   )       "
-					(s"  $placeholder  ", s"  $placeholder  ")
-				}
-				else {
-					val prevNode = bestPrevNode(node, state)
-					val prevState = bestPrevState(node, state)
-					val desc = f"$state: ($prevNode%3d, $prevState%2d) ${-bestCost(node, state)}%6.1f"
-					val emit = doc.arcMap(prevNode, node).sym.toString
-					if (pathSet.contains((node, state)))
-						(s"/ %${desc.length}.${desc.length}s \\" format emit, s"\\ $desc /")
-					else
-						(s"  %${desc.length}.${desc.length}s  " format emit, s"  $desc  ")
-				}
-			}
-			val tops = cells map { _._1 }
-			val bottoms = cells map { _._2 }
-			f"    | ${tops.mkString}\n$node%3d | ${bottoms.mkString}"
-		}
-		lines.mkString("\n")
-	}
-}
-
 
 
 object StructuredDocumentModel {

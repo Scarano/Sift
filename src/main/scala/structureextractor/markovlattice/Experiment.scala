@@ -1,7 +1,6 @@
 package structureextractor.markovlattice
 
-import java.io.File
-
+import java.io.{File, PrintWriter}
 import structureextractor.{DataGenerator, LabeledDoc}
 
 import scala.io.Source
@@ -48,38 +47,44 @@ object Experiment {
 		}
 	}
 
+	case class Config(
+	                  input: String = "b a n a n a",
+	                  inputFile: File = null,
+	                  outputFile: File = null,
+	                  generateSimple: Seq[Int] = Seq(),
+	                  generateMulti: Seq[Int] = Seq(),
+	                  states: Int = 5,
+	                  rerunStates: Option[Int] = None,
+	                  strategy: TrainingStrategy = FB,
+	                  maxArcLength: Int = 10,
+	                  arcLengthPenalty: Double = 0.0,
+	                  subsequenceLattice: Boolean = false,
+	                  minArcFreq: Int = 5,
+	                  maxArcRatio: Int = 5,
+	                  sequiturLattice: Boolean = false,
+	                  allowThreshold: Double = 0.2,
+	                  enforceThreshold: Double = 0.8,
+	                  alpha: Double = 1.0,
+	                  labelCoverage: Double = 0.0,
+	                  tolerance: Double = 1e-4,
+	                  maxEpochs: Int = 99,
+	                  truncate: Option[Int] = None,
+	)
+
 	def main(args: Array[String]): Unit = {
 //		multiTest(args(0).toInt, List(DocumentLattice.examples(2))); return
 //		demo(); return
 //		problemExample3(); return
 
-		case class Config(
-				                 input: String = "b a n a n a",
-				                 inputFile: File = null,
-				                 generateSimple: Seq[Int] = Seq(),
-				                 generateMulti: Seq[Int] = Seq(),
-				                 states: Int = 5,
-				                 strategy: TrainingStrategy = FB,
-				                 maxArcLength: Int = 10,
-				                 arcLengthPenalty: Double = 0.0,
-				                 subsequenceLattice: Boolean = false,
-				                 minArcFreq: Int = 5,
-				                 maxArcRatio: Int = 5,
-				                 sequiturLattice: Boolean = false,
-				                 allowThreshold: Double = 0.2,
-				                 enforceThreshold: Double = 0.8,
-				                 alpha: Double = 1.0,
-				                 labelCoverage: Double = 0.0,
-				                 tolerance: Double = 1e-5,
-				                 maxEpochs: Int = 99,
-				                 truncate: Option[Int] = None,
-		)
 		val parser = new scopt.OptionParser[Config]("StructuredDocumentModel") {
 			opt[String]("input").action( (x, c) =>
 				c.copy(input = x)
 			)
 			opt[File]("input-file").action( (x, c) =>
 				c.copy(inputFile = x)
+			)
+			opt[File]("output-file").action( (x, c) =>
+				c.copy(outputFile = x)
 			)
 			opt[Seq[Int]]("generate-simple").action( (x, c) =>
 				c.copy(generateSimple = x)
@@ -89,6 +94,9 @@ object Experiment {
 			)
 			opt[Int]("states").action( (x, c) =>
 				c.copy(states = x)
+			)
+			opt[Int]("rerun-states").action( (x, c) =>
+				c.copy(rerunStates = Some(x))
 			)
 			opt[String]("strategy").action( (x, c) =>
 				if (x == "fb")
@@ -183,38 +191,57 @@ object Experiment {
 			else {
 				DocumentLattice.fromTokens(labeledDoc.tokens, config.maxArcLength, labeledDoc.labels)
 			}
-//		println(doc.mkString())
-		println(doc.mkString(limit=400))
+
+		val log =
+			if (config.outputFile != null) new PrintWriter(config.outputFile)
+			else new PrintWriter("/dev/null")
+
+		log.write(doc.mkString())
+		log.write("\n\n")
+
+		println(doc.mkString(limit=40))
 
 		val docs = List(doc)
 
-		val initialModel = StructuredDocumentModel.randomInitial(
-			config.states, DocumentLattice.buildVocab(docs))
+		val model = runExperiment(config, config.states, docs, log)
+
+		config.rerunStates.foreach { n =>
+			val filteredDocs = docs.map { doc => model.viterbiChart(doc).filterArcs() }
+			runExperiment(config, n, filteredDocs, log)
+		}
+
+		log.close()
+
+//		ammonite.Main().run("tokens" → tokens, "text" → text, "doc" → doc)
+	}
+
+	def runExperiment[SYM: ClassTag](config: Config, states: Int, docs: Seq[DocumentLattice[SYM]],
+	                                 log: PrintWriter)
+	: StructuredDocumentModel[SYM] = {
+
+		val initialModel =
+			StructuredDocumentModel.randomInitial(states, DocumentLattice.buildVocab(docs))
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
 				                 config.arcLengthPenalty)
-		println(s"\nfinal model:\n$model")
+		val viterbiChart = model.viterbiChart(docs.head)
+
 		println(s"\nIterations: ${lossLog.size}")
 		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
+		println(viterbiChart.pathInfo(20))
 		println()
+
+		log.write(s"\nfinal model:\n$model\n")
+		log.write(s"Iterations: ${lossLog.size}\n")
+		log.write(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" ") + "\n")
+		log.write(viterbiChart.pathInfo() + "\n\n")
+
+		viterbiChart.stateSummary(log, 10)
+
+		log.write("\n")
+
 //		println(model.viterbiChart(docs.head).toString)
-		println(model.viterbiChart(docs.head).pathInfo(20))
-//		println(model.viterbiChart(docs.head).pathInfo())
 
-		val filteredDocs = docs.map { doc => model.viterbiChart(doc).filterArcs() }
-
-		val fInitialModel = StructuredDocumentModel.randomInitial(
-			config.states, DocumentLattice.buildVocab(filteredDocs))
-		val (fModel, fLossLog) =
-			fInitialModel.train(filteredDocs, config.strategy, config.maxEpochs,
-			                                   config.tolerance, 0.0)
-		println(s"\nFiltered model:\n$fModel")
-		println(s"\nIterations: ${fLossLog.size}")
-		println(s"Loss log: " + fLossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
-		println()
-		println(fModel.viterbiChart(filteredDocs.head).pathInfo(20))
-//		println(fModel.viterbiChart(filteredDocs.head).pathInfo())
-
-//		ammonite.Main().run("tokens" → tokens, "text" → text, "doc" → doc)
+		model
 	}
 }
