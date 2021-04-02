@@ -6,6 +6,7 @@ import structureextractor.rosettasuffixtree.{Node, ReversedSuffixTree, SuffixTre
 import structureextractor.util.ResultTree
 import structureextractor.util.MaxOption._
 
+import SubsequenceFinder.substringScore
 
 case class ScoredSubstring(start: Int, end: Int, occurrences: Seq[Int], score: Double) {
 	def toString(tokens: Seq[String]): String =
@@ -15,16 +16,8 @@ case class ScoredSubstring(start: Int, end: Int, occurrences: Seq[Int], score: D
 class SubsequenceFinder(maxLen: Int,
                         minFreq: Int,
                         minScore: Double,
+                        scoreFn: (Int, Int, Int, Int, Int) => Double = substringScore
 ) {
-
-	def substringScore(c_whole: Int, c_lhs: Int, c_lhs_max: Int, c_rhs: Int, c_rhs_max: Int)
-	: Double = {
-//		println(s"  substringScore($c_whole, $c_lhs, $c_lhs_max, $c_rhs, $c_rhs_max)")
-		val score_lhs = c_whole.toDouble / c_lhs * (1.0 - c_lhs_max.toDouble / c_whole)
-		val score_rhs = c_whole.toDouble / c_rhs * (1.0 - c_rhs_max.toDouble / c_whole)
-//		println(s"    => min($score_lhs, $score_rhs) = ${math.min(score_lhs, score_rhs)}")
-		math.min(score_lhs, score_rhs)
-	}
 
 	//	def scoredSubstringsFromNodeMut(node: Node[String], parent: Node[String], rhsStart: Int,
 //	                                minScore: Double,
@@ -85,7 +78,7 @@ class SubsequenceFinder(maxLen: Int,
 				val c_rhs = node.getTree.lookup(node.getEnd-node.getDepth, rhsEnd).getCount
 				val c_rhs_max = node.getChildren.asScala
 						.map(_.getCount).maxOption.getOrElse(0)
-				val score = substringScore(c_whole, c_lhs, c_lhs_max, c_rhs, c_rhs_max)
+				val score = scoreFn(c_whole, c_lhs, c_lhs_max, c_rhs, c_rhs_max)
 				if (score < minScore)
 					Nil
 				else
@@ -112,6 +105,15 @@ class SubsequenceFinder(maxLen: Int,
 }
 
 object SubsequenceFinder {
+
+	def substringScore(c_whole: Int, c_lhs: Int, c_lhs_max: Int, c_rhs: Int, c_rhs_max: Int)
+	: Double = {
+//		println(s"  substringScore($c_whole, $c_lhs, $c_lhs_max, $c_rhs, $c_rhs_max)")
+		val score_lhs = c_whole.toDouble / c_lhs * (1.0 - c_lhs_max.toDouble / c_whole)
+		val score_rhs = c_whole.toDouble / c_rhs * (1.0 - c_rhs_max.toDouble / c_whole)
+//		println(s"    => min($score_lhs, $score_rhs) = ${math.min(score_lhs, score_rhs)}")
+		math.min(score_lhs, score_rhs)
+	}
 
 	def main(args: Array[String]): Unit = {
 		val string = args.headOption.getOrElse("abcbcbabccbaabcaababcbca")

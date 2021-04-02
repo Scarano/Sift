@@ -1,7 +1,7 @@
 package structureextractor.markovlattice
 
 import java.io.{File, PrintWriter}
-import structureextractor.{DataGenerator, LabeledDoc}
+import structureextractor.{DataGenerator, FrequencyCounter, FrequencyScorer, FrequencySegmenter, LabeledDoc}
 
 import scala.io.Source
 import scala.reflect.ClassTag
@@ -48,27 +48,30 @@ object Experiment {
 	}
 
 	case class Config(
-	                  input: String = "b a n a n a",
-	                  inputFile: File = null,
-	                  outputFile: File = null,
-	                  generateSimple: Seq[Int] = Seq(),
-	                  generateMulti: Seq[Int] = Seq(),
-	                  states: Int = 5,
-	                  rerunStates: Option[Int] = None,
-	                  strategy: TrainingStrategy = FB,
-	                  maxArcLength: Int = 10,
-	                  arcLengthPenalty: Double = 0.0,
-	                  subsequenceLattice: Boolean = false,
-	                  minArcFreq: Int = 5,
-	                  maxArcRatio: Int = 5,
-	                  sequiturLattice: Boolean = false,
-	                  allowThreshold: Double = 0.2,
-	                  enforceThreshold: Double = 0.8,
-	                  alpha: Double = 1.0,
-	                  labelCoverage: Double = 0.0,
-	                  tolerance: Double = 1e-4,
-	                  maxEpochs: Int = 99,
-	                  truncate: Option[Int] = None,
+			                 input: String = "b a n a n a",
+			                 inputFile: File = null,
+			                 outputFile: File = null,
+			                 generateSimple: Seq[Int] = Seq(),
+			                 generateMulti: Seq[Int] = Seq(),
+			                 states: Int = 5,
+			                 rerunStates: Option[Int] = None,
+			                 strategy: TrainingStrategy = FB,
+			                 maxArcLength: Int = 10,
+			                 arcPriorWeight: Double = 0.0,
+			                 frequencyCountLattice: Boolean = false,
+			                 frequencyScoreWeight: Double = 0.5,
+			                 frequencyNGramSize: Int = 3,
+			                 subsequenceLattice: Boolean = false,
+			                 minArcFreq: Int = 5,
+			                 maxArcRatio: Int = 5,
+			                 sequiturLattice: Boolean = false,
+			                 allowThreshold: Double = 0.2,
+			                 enforceThreshold: Double = 0.8,
+			                 alpha: Double = 1.0,
+			                 labelCoverage: Double = 0.0,
+			                 tolerance: Double = 1e-4,
+			                 maxEpochs: Int = 99,
+			                 truncate: Option[Int] = None,
 	)
 
 	def main(args: Array[String]): Unit = {
@@ -111,8 +114,17 @@ object Experiment {
 			opt[Int]("max-arc-length").action( (x, c) =>
 				c.copy(maxArcLength = x)
 			)
-			opt[Double]("arc-length-penalty").action( (x, c) =>
-				c.copy(arcLengthPenalty = x)
+			opt[Double]("arc-prior-weight").action( (x, c) =>
+				c.copy(arcPriorWeight = x)
+			)
+			opt[Unit]("frequency-count-lattice").action( (_, c) =>
+				c.copy(frequencyCountLattice = true)
+			)
+			opt[Double]("frequency-score-weight").action( (x, c) =>
+				c.copy(frequencyScoreWeight = x)
+			)
+			opt[Int]("frequency-ngram-size").action( (x, c) =>
+				c.copy(frequencyNGramSize = x)
 			)
 			opt[Unit]("subsequence-lattice").action( (_, c) =>
 				c.copy(subsequenceLattice = true)
@@ -188,6 +200,16 @@ object Experiment {
 				              config.minArcFreq, config.allowThreshold, config.alpha,
 				              labeledDoc.labels)
 			}
+			else if (config.frequencyCountLattice) {
+				val freqCounter = new FrequencyCounter(config.frequencyNGramSize, config.minArcFreq)
+				val scorer = freqCounter.frequencyScorer(labeledDoc.tokens.iterator)
+				println("Frequency counts:")
+				println(scorer.describe)
+				println()
+				val segmenter = new FrequencySegmenter(scorer, config.allowThreshold, config.maxArcRatio,
+					config.minArcFreq, config.frequencyScoreWeight)
+				segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels)
+			}
 			else {
 				DocumentLattice.fromTokens(labeledDoc.tokens, config.maxArcLength, labeledDoc.labels)
 			}
@@ -223,12 +245,12 @@ object Experiment {
 			StructuredDocumentModel.randomInitial(states, DocumentLattice.buildVocab(docs))
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
-				                 config.arcLengthPenalty)
+				                 config.arcPriorWeight)
 		val viterbiChart = model.viterbiChart(docs.head)
 
 		println(s"\nIterations: ${lossLog.size}")
 		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
-		println(viterbiChart.pathInfo(20))
+		println(viterbiChart.pathInfo(20, 80))
 		println()
 
 		log.write(s"\nfinal model:\n$model\n")

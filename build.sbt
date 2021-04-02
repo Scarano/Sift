@@ -8,6 +8,8 @@ libraryDependencies += "com.github.scopt" %% "scopt" % "3.7.1"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.1.1" % "test"
 
+libraryDependencies += "org.scalactic" %% "scalactic" % "3.2.5"
+
 libraryDependencies += "com.typesafe.scala-logging" %% "scala-logging" % "3.9.3"
 
 //libraryDependencies += "com.github.guillaumedd" %% "gstlib" % "0.1.2"
@@ -23,10 +25,12 @@ libraryDependencies += "net.seninp" % "jmotif-gi" % "1.0.1"
 // https://mvnrepository.com/artifact/org.scalanlp/breeze
 libraryDependencies += "org.scalanlp" %% "breeze" % "1.1"
 libraryDependencies += "org.scalanlp" %% "breeze-natives" % "1.1"
+libraryDependencies += "org.scalanlp" %% "breeze-viz" % "1.1"
 
 libraryDependencies += "com.github.fommil.netlib" % "all" % "1.1.2" pomOnly()
 
-mainClass in (Compile, run) := Some("TreeSandbox")
+
+//mainClass in (Compile, run) := Some("TreeSandbox")
 
 
 // Copy "resources" to target directory

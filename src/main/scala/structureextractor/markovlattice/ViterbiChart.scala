@@ -35,11 +35,11 @@ case class ViterbiChart[SYM](
 		case _ => throw new Exception("Bug. Don't call this on empty list.")
 	}
 
-	def pathInfo(limit: Int = Int.MaxValue): String = {
+	def pathInfo(limit: Int = Int.MaxValue, arcLimit: Int = Int.MaxValue): String = {
 		val transitionStrings =
 			for (((t, i), (u, j)) <- (bestPath zip bestPath.tail).take(limit);
 			     cost = bestCost(u, j) - bestCost(t, i);
-			     arcStr = abbreviate(doc.arcMap(t, u).sym.toString, 80, true))
+			     arcStr = abbreviate(doc.arcMap(t, u).sym.toString, arcLimit, showLength = true))
 				yield
 					f"${-cost}%10.1f " +
 //					f"$t%4d -> $u%4d " +
