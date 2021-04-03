@@ -227,8 +227,17 @@ class StructuredDocumentModel[SYM](
 		val meanDocEntropy = -sumLogPdoc / numDocs
 //		println(s"Mean doc entropy = $meanDocEntropy")
 
+		val oldState0Sum = softmax(emitObs(0, ::))
+		val smoother = DenseVector.fill(emitObs.cols) { log(vocab.size.toDouble) }
+		emitObs(0, ::) := softmax(emitObs(0, ::), smoother.t)
+		emitObs(0, ::) += oldState0Sum - softmax(emitObs(0, ::))
+		println(emitObs)
+
 		val newTransCost = transObs(::, *) - softmax(transObs, Axis._1)
 		val newEmitCost = emitObs(::, *) - softmax(emitObs, Axis._1)
+
+		for (w <- 0 until vocab.size)
+			newEmitCost(0, w) -= 0.1 * (vocab(w).toString.count(_ == ' ') + 1)
 
 		// interpolate between old model and re-estimated model. (This is kind of like a learning
 		// rate parameter.)
