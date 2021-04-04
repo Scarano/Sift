@@ -142,11 +142,11 @@ class FrequencySegmenter(
 
 	def arcScore(c_whole: Int, c_lhs: Int, c_lhs_max: Int, c_rhs: Int, c_rhs_max: Int)
 	: Double = {
-		val substringScore =
+		val substringScore = 0.001 +
 		          SubsequenceFinder.substringScore(c_whole, c_lhs, c_lhs_max, c_rhs, c_rhs_max)
-		val freqScore = frequencyScorer(c_whole)
+		val freqScore = frequencyScorer(c_whole) + 0.001
 //		println(f"$substringScore%.5f freqScore($c_whole) = $freqScore%.5f")
-		log((1.0 - freqScoreWeight) * substringScore + freqScoreWeight * freqScore)
+		(1.0 - freqScoreWeight) * log(substringScore) + freqScoreWeight * log(freqScore)
 	}
 
 	def makeDocumentLattice(tokens: Array[String], labels: IndexedSeq[Option[Int]])
