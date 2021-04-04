@@ -147,6 +147,7 @@ class StructuredDocumentModel[SYM](
 	: (StructuredDocumentModel[SYM], Double) = {
 
 		var numDocs = 0
+		var numNodes = 0
 		var sumLogPdoc = 0.0
 		val initObs = DenseVector.fill(numStates) { Double.NegativeInfinity }
 		val transObs = DenseMatrix.fill(numStates, numStates) { Double.NegativeInfinity }
@@ -166,6 +167,7 @@ class StructuredDocumentModel[SYM](
 			println(s"log P(doc) = $logPdoc")
 
 			numDocs += 1
+			numNodes += doc.numNodes
 			sumLogPdoc += logPdoc
 
 			initObs := softmax(initObs, γ(0, ::).t)
@@ -174,6 +176,7 @@ class StructuredDocumentModel[SYM](
 		       arc <- doc.arcs(t);
 		       u = arc.target)
 			{
+
 				// ξ(t, u, i, j) = Pr(arc(t/i -> u/j) | doc, labels)
 				val ξ_tu = DenseMatrix.tabulate(numStates, numStates) { case (i, j) =>
 					// TODO - remove redundant computation
@@ -227,17 +230,22 @@ class StructuredDocumentModel[SYM](
 		val meanDocEntropy = -sumLogPdoc / numDocs
 //		println(s"Mean doc entropy = $meanDocEntropy")
 
+		// Artificially favor state 0
+		transObs(::, 0) := softmax(transObs(::, 0),
+			                         DenseVector.fill(transObs.rows) { log(0.2 * numNodes) })
+//		println(transObs)
+
+		// Artificially flatten state 0's emission distribution.
 		val oldState0Sum = softmax(emitObs(0, ::))
 		val smoother = DenseVector.fill(emitObs.cols) { log(vocab.size.toDouble) }
 		emitObs(0, ::) := softmax(emitObs(0, ::), smoother.t)
-		emitObs(0, ::) += oldState0Sum - softmax(emitObs(0, ::))
-		println(emitObs)
+		emitObs(0, ::) += oldState0Sum - softmax(emitObs(0, ::))  // ???
+		for (w <- 0 until vocab.size)
+			emitObs(0, w) -= 1.0 * (vocab(w).toString.count(_ == ' ') + 0)
+//		println(emitObs)
 
 		val newTransCost = transObs(::, *) - softmax(transObs, Axis._1)
 		val newEmitCost = emitObs(::, *) - softmax(emitObs, Axis._1)
-
-		for (w <- 0 until vocab.size)
-			newEmitCost(0, w) -= 0.1 * (vocab(w).toString.count(_ == ' ') + 1)
 
 		// interpolate between old model and re-estimated model. (This is kind of like a learning
 		// rate parameter.)

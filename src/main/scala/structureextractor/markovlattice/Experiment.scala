@@ -250,7 +250,7 @@ object Experiment {
 
 		println(s"\nIterations: ${lossLog.size}")
 		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
-		println(viterbiChart.pathInfo(20, 80))
+		println(viterbiChart.pathInfo(40, 80))
 		println()
 
 		log.write(s"\nfinal model:\n$model\n")
