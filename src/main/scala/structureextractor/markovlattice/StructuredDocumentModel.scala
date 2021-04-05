@@ -143,7 +143,8 @@ class StructuredDocumentModel[SYM](
 		* using forward-backward algorithm.
 		* @return tuple (new model, mean log likelihood)
 		*/
-	def reestimate(docs: Seq[DocumentLattice[SYM]], arcLengthPenalty: Double = 0.0)
+	def reestimate(docs: Seq[DocumentLattice[SYM]], arcPriorWeight: Double = 0.0,
+	               flatStates: Int = 0, flatStateBoost: Double = 0.0)
 	: (StructuredDocumentModel[SYM], Double) = {
 
 		var numDocs = 0
@@ -188,7 +189,7 @@ class StructuredDocumentModel[SYM](
 						case _ =>
 							transCost(i, j)
 					}
-					val arcCost = emitCost(i, vocab(arc.sym)) + arcLengthPenalty * arc.cost
+					val arcCost = emitCost(i, vocab(arc.sym)) + arcPriorWeight * arc.cost
 					α(t, i) + transCost_ij + arcCost + β(u, j) - logPdoc
 				}
 //				println(s"ξ($t, $u) = \n$ξ_tu")
@@ -209,7 +210,7 @@ class StructuredDocumentModel[SYM](
 				val arcObs = softmax(ξ_tu, Axis._1)
 
 				// penalize long arcs
-//				arcObs :-= DenseVector.fill(arcObs.length) { arcLengthPenalty * (u - t) }
+//				arcObs :-= DenseVector.fill(arcObs.length) { arcPriorWeight * (u - t) }
 
 				emitObs(::, vocab(arc.sym)) := softmax(emitObs(::, vocab(arc.sym)), arcObs)
 			}
@@ -230,19 +231,22 @@ class StructuredDocumentModel[SYM](
 		val meanDocEntropy = -sumLogPdoc / numDocs
 //		println(s"Mean doc entropy = $meanDocEntropy")
 
-		// Artificially favor state 0
-		transObs(::, 0) := softmax(transObs(::, 0),
-			                         DenseVector.fill(transObs.rows) { log(0.2 * numNodes) })
-//		println(transObs)
+		// TODO: replace for loop with matrix slices
+		val boost = DenseVector.fill(transObs.rows) { log(flatStateBoost * numNodes / flatStates) }
+		val emitSmoother = DenseVector.fill(emitObs.cols) { log(vocab.size.toDouble) }
+		for (i <- 0 until flatStates) {
+			// Artificially favor "flattened" states
+			transObs(::, i) := softmax(transObs(::, i), boost)
+	//		println(transObs)
 
-		// Artificially flatten state 0's emission distribution.
-		val oldState0Sum = softmax(emitObs(0, ::))
-		val smoother = DenseVector.fill(emitObs.cols) { log(vocab.size.toDouble) }
-		emitObs(0, ::) := softmax(emitObs(0, ::), smoother.t)
-		emitObs(0, ::) += oldState0Sum - softmax(emitObs(0, ::))  // ???
-		for (w <- 0 until vocab.size)
-			emitObs(0, w) -= 1.0 * (vocab(w).toString.count(_ == ' ') + 0)
-//		println(emitObs)
+			// Artificially flatten those states' emission distributions.
+			val oldState0Sum = softmax(emitObs(0, ::))
+			emitObs(0, ::) := softmax(emitObs(0, ::), emitSmoother.t)
+			emitObs(0, ::) += oldState0Sum - softmax(emitObs(0, ::)) // TODO: is this the formula I want?
+			for (w <- 0 until vocab.size)
+				emitObs(0, w) -= 1.0 * (vocab(w).toString.count(_ == ' ') + 0)
+	//		println(emitObs)
+		}
 
 		val newTransCost = transObs(::, *) - softmax(transObs, Axis._1)
 		val newEmitCost = emitObs(::, *) - softmax(emitObs, Axis._1)
@@ -268,10 +272,12 @@ class StructuredDocumentModel[SYM](
 			               maxEpochs: Int = 99,
 			               tol: Double = 1e-5,
 			               arcPriorWeight: Double = 0.0,
+			               flatStates: Int = 0,
+			               flatStateBoost: Double = 0.0,
 			               prevCrossentropies: List[Double] = List.empty[Double]
   ): (StructuredDocumentModel[SYM], List[Double]) = {
 		val (newModel, meanCrossentropy) = strategy match {
-			case FB | FBThenViterbi => reestimate(docs, arcPriorWeight)
+			case FB | FBThenViterbi => reestimate(docs, arcPriorWeight, flatStates, flatStateBoost)
 			case Viterbi => reestimateViterbi(docs, arcPriorWeight)
 		}
 		val newCrossentropyList = meanCrossentropy :: prevCrossentropies
@@ -282,7 +288,8 @@ class StructuredDocumentModel[SYM](
 				if (abs(1 - prevEntropy / meanCrossentropy) < tol) {
 					if (strategy == FBThenViterbi)
 						newModel.train(docs, Viterbi, maxEpochs - 1, tol, arcPriorWeight,
-							             newCrossentropyList)
+						               flatStates, flatStateBoost,
+						               newCrossentropyList)
 					else
 						(newModel, newCrossentropyList)
 				}
@@ -296,10 +303,12 @@ class StructuredDocumentModel[SYM](
 //						}
 //					val newArcPriorWeight = max(2.0, arcPriorWeight - .5)
 					newModel.train(docs, strategy, maxEpochs - 1, tol, arcPriorWeight,
-						             newCrossentropyList)
+					               flatStates, flatStateBoost,
+					               newCrossentropyList)
 				}
 			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol, arcPriorWeight,
-				                       newCrossentropyList)
+			                         flatStates, flatStateBoost,
+			                         newCrossentropyList)
 		}
 	}
 

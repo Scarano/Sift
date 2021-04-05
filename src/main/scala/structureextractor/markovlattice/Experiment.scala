@@ -47,31 +47,32 @@ object Experiment {
 		}
 	}
 
-	case class Config(
-			                 input: String = "b a n a n a",
-			                 inputFile: File = null,
-			                 outputFile: File = null,
-			                 generateSimple: Seq[Int] = Seq(),
-			                 generateMulti: Seq[Int] = Seq(),
-			                 states: Int = 5,
-			                 rerunStates: Option[Int] = None,
-			                 strategy: TrainingStrategy = FB,
-			                 maxArcLength: Int = 10,
-			                 arcPriorWeight: Double = 0.0,
-			                 frequencyCountLattice: Boolean = false,
-			                 frequencyScoreWeight: Double = 0.5,
-			                 frequencyNGramSize: Int = 3,
-			                 subsequenceLattice: Boolean = false,
-			                 minArcFreq: Int = 5,
-			                 maxArcRatio: Int = 5,
-			                 sequiturLattice: Boolean = false,
-			                 allowThreshold: Double = 0.2,
-			                 enforceThreshold: Double = 0.8,
-			                 alpha: Double = 1.0,
-			                 labelCoverage: Double = 0.0,
-			                 tolerance: Double = 1e-4,
-			                 maxEpochs: Int = 99,
-			                 truncate: Option[Int] = None,
+	case class Config(input: String = "b a n a n a",
+	                  inputFile: File = null,
+	                  outputFile: File = null,
+	                  generateSimple: Seq[Int] = Seq(),
+	                  generateMulti: Seq[Int] = Seq(),
+	                  states: Int = 5,
+	                  rerunStates: Option[Int] = None,
+	                  strategy: TrainingStrategy = FB,
+	                  maxArcLength: Int = 10,
+	                  arcPriorWeight: Double = 0.0,
+	                  flatStates: Int = 0,
+	                  flatStateBoost: Double = 0.0,
+	                  frequencyCountLattice: Boolean = false,
+	                  frequencyScoreWeight: Double = 0.5,
+	                  frequencyNGramSize: Int = 3,
+	                  subsequenceLattice: Boolean = false,
+	                  minArcFreq: Int = 5,
+	                  maxArcRatio: Int = 5,
+	                  sequiturLattice: Boolean = false,
+	                  allowThreshold: Double = 0.2,
+	                  enforceThreshold: Double = 0.8,
+	                  alpha: Double = 1.0,
+	                  labelCoverage: Double = 0.0,
+	                  tolerance: Double = 1e-4,
+	                  maxEpochs: Int = 99,
+	                  truncate: Option[Int] = None,
 	)
 
 	def main(args: Array[String]): Unit = {
@@ -116,6 +117,12 @@ object Experiment {
 			)
 			opt[Double]("arc-prior-weight").action( (x, c) =>
 				c.copy(arcPriorWeight = x)
+			)
+			opt[Int]("flat-states").action( (x, c) =>
+				c.copy(flatStates = x)
+			)
+			opt[Double]("flat-state-boost").action( (x, c) =>
+				c.copy(flatStateBoost = x)
 			)
 			opt[Unit]("frequency-count-lattice").action( (_, c) =>
 				c.copy(frequencyCountLattice = true)
@@ -245,7 +252,7 @@ object Experiment {
 			StructuredDocumentModel.randomInitial(states, DocumentLattice.buildVocab(docs))
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
-				                 config.arcPriorWeight)
+				                 config.arcPriorWeight, config.flatStates, config.flatStateBoost)
 		val viterbiChart = model.viterbiChart(docs.head)
 
 		println(s"\nIterations: ${lossLog.size}")
