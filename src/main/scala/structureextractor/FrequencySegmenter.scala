@@ -137,15 +137,20 @@ object FrequencyCounter {
 class FrequencySegmenter(
     frequencyScorer: FrequencyScorer,
 		minScore: Double, maxArcRatio: Int, minArcFreq: Int,
-    freqScoreWeight: Double = 0.5
+    freqScoreWeight: Double = 1.0
 ) {
 
 	def arcScore(c_whole: Int, c_lhs: Int, c_lhs_max: Int, c_rhs: Int, c_rhs_max: Int)
 	: Double = {
 		val substringScore = 0.001 +
 		          SubsequenceFinder.substringScore(c_whole, c_lhs, c_lhs_max, c_rhs, c_rhs_max)
-		val freqScore = frequencyScorer(c_whole) + 0.001
-//		println(f"$substringScore%.5f freqScore($c_whole) = $freqScore%.5f")
+		val freqScore =
+			if (c_whole > c_lhs_max && c_whole > c_rhs_max)
+				frequencyScorer(c_whole)
+			else
+				frequencyScorer(0)
+//		println(f"arcScore($c_whole, $c_lhs_max, $c_rhs_max) = $freqScore%.5f")
+
 		(1.0 - freqScoreWeight) * log(substringScore) + freqScoreWeight * log(freqScore)
 	}
 
@@ -187,9 +192,32 @@ class FrequencySegmenter(
 
 object FrequencySegmenter {
 
+	def apply(tokens: Iterable[String], nGramSize: Int, minCount: Int, cutoff: Int = Int.MaxValue)
+	: FrequencySegmenter = {
+		val picker = new FrequencyCounter(nGramSize, minCount)
+		val (freqs, freqScores) = picker.frequencyScores(tokens.iterator)
+
+		val sortedFreqScores = (freqs.valuesIterator zip freqScores.valuesIterator)
+		                          .toArray.sortBy(-_._2)
+
+		val allowedFreqScores = sortedFreqScores.take(cutoff)
+		println(allowedFreqScores.map({ case (f, s) => s"$f: $s" }).mkString("\n"))
+
+		val allowThreshold = log(allowedFreqScores.last._2) - 1e-9 // only works if freqScoreWeight=1.0
+
+		val scorer = picker.frequencyScorer(tokens.iterator)
+		println("Frequency counts:")
+		println(scorer.describe)
+		println()
+
+		new FrequencySegmenter(scorer, allowThreshold, 1, minCount, 1.0)
+	}
+
 	def main(args: Array[String]): Unit = {
 		val nGramSize = if (args.length >= 2) args(1).toInt else 3
-		val minCount = if (args.length >= 3) args(2).toInt else 10
+		val cutoff = if (args.length >= 3) args(2).toInt else 5
+		val minCount = if (args.length >= 4) args(3).toInt else 2
+		val printLimit = if (args.length >= 5) args(4).toInt else Int.MaxValue
 
 		val input = Source.fromFile(args(0))
 		val tokens = try {
@@ -200,11 +228,13 @@ object FrequencySegmenter {
 			input.close()
 		}
 
-		val picker = new FrequencyCounter(nGramSize, minCount)
-		val (freqs, freqScores) = picker.frequencyScores(tokens.iterator)
-		println(freqScores)
+		val segmenter = FrequencySegmenter(tokens, nGramSize, minCount, cutoff)
+		val tokenArray = tokens.toArray
+		val labels = tokenArray.map { _ => None }
+		val doc = segmenter.makeDocumentLattice(tokens.toArray, labels)
+		println(doc.mkString(limit=printLimit))
 
-		scatterPlot(freqs.map(log(_)), freqScores, { i => .01 })
+//		scatterPlot(freqs.map(log(_)), freqScores, { i => .01 })
 	}
 
 	def scatterPlot[X, Y, V](x: X, y: Y, size: Int => Double)

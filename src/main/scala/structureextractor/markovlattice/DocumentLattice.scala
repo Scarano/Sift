@@ -52,10 +52,10 @@ case class DocumentLattice[SYM](arcs: Array[List[AArc[SYM]]]) {
 		val arcStrings =
 			for (source <- nonfinalNodes.take(limit); arc <- arcs(source))
 				yield arc match {
-					case Arc(sym, target, _) =>
-						s"$source -> $target ( ) [${sym.toString}]"
-					case LabeledArc(sym, target, _, label) =>
-						s"$source -> $target ($label) [${sym.toString}]"
+					case Arc(sym, target, cost) =>
+						f"$source -> $target $cost%.3f ( ) [${sym.toString}]"
+					case LabeledArc(sym, target, cost, label) =>
+						f"$source -> $target $cost%.3f ($label) [${sym.toString}]"
 				}
 		arcStrings.mkString(sep)
 	}

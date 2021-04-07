@@ -1,6 +1,6 @@
 package structureextractor
 
-import collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 import structureextractor.rosettasuffixtree.{Node, ReversedSuffixTree, SuffixTree}
 import structureextractor.util.ResultTree
@@ -98,7 +98,7 @@ class SubsequenceFinder(maxLen: Int,
 		val tokenList = tokens.asJava
 		val sTree = SuffixTree.ofString(tokenList)
 		val revTree = ReversedSuffixTree.ofString(tokenList)
-//		revTree.visualize()
+//		sTree.visualize()
 
 		scoredSubstringsFromNode(sTree.getRoot, revTree).toList
 	}
@@ -127,8 +127,6 @@ object SubsequenceFinder {
 			case (m, (s, c)) =>
 				m + (s -> (m.getOrElse(s, 0) + c))
 		}
-		println(" \n \n \n \n \n")
-
 		println(counts.toVector.sortBy(-_._2))
 
 		for ((ch, i) <- string.zipWithIndex) {

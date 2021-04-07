@@ -62,6 +62,7 @@ object Experiment {
 	                  frequencyCountLattice: Boolean = false,
 	                  frequencyScoreWeight: Double = 0.5,
 	                  frequencyNGramSize: Int = 3,
+	                  frequencyCutoff: Int = 5,
 	                  subsequenceLattice: Boolean = false,
 	                  minArcFreq: Int = 5,
 	                  maxArcRatio: Int = 5,
@@ -132,6 +133,9 @@ object Experiment {
 			)
 			opt[Int]("frequency-ngram-size").action( (x, c) =>
 				c.copy(frequencyNGramSize = x)
+			)
+			opt[Int]("frequency-cutoff").action( (x, c) =>
+				c.copy(frequencyCutoff = x)
 			)
 			opt[Unit]("subsequence-lattice").action( (_, c) =>
 				c.copy(subsequenceLattice = true)
@@ -208,13 +212,8 @@ object Experiment {
 				              labeledDoc.labels)
 			}
 			else if (config.frequencyCountLattice) {
-				val freqCounter = new FrequencyCounter(config.frequencyNGramSize, config.minArcFreq)
-				val scorer = freqCounter.frequencyScorer(labeledDoc.tokens.iterator)
-				println("Frequency counts:")
-				println(scorer.describe)
-				println()
-				val segmenter = new FrequencySegmenter(scorer, config.allowThreshold, config.maxArcRatio,
-					config.minArcFreq, config.frequencyScoreWeight)
+				val segmenter = FrequencySegmenter(labeledDoc.tokens, config.frequencyNGramSize,
+					config.minArcFreq, config.frequencyCutoff)
 				segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels)
 			}
 			else {
