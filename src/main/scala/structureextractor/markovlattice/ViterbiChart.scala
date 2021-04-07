@@ -4,7 +4,7 @@ import breeze.linalg._
 import breeze.numerics._
 import structureextractor.Util.abbreviate
 
-import java.io.PrintWriter
+import java.io.{File, PrintWriter}
 import scala.annotation.tailrec
 
 /**
@@ -49,6 +49,12 @@ case class ViterbiChart[SYM](
 					f"$i%3d " +
 					s"'$arcStr'"
 		transitionStrings.mkString("\n")
+	}
+
+	def printPath(f: PrintWriter): Unit = {
+		for (((t, i), (u, j)) <- (bestPath zip bestPath.tail);
+		     arcStr = doc.arcMap(t, u).sym.toString)
+			f.write(arcStr + "\n")
 	}
 
 	/**

@@ -1,6 +1,9 @@
 package structureextractor.markovlattice
 
-import java.io.{File, PrintWriter}
+import structureextractor.util.Managed
+import structureextractor.util.Managed._
+
+import java.io.{File, FileOutputStream, PrintWriter}
 import structureextractor.{DataGenerator, FrequencyCounter, FrequencyScorer, FrequencySegmenter, LabeledDoc}
 
 import scala.io.Source
@@ -48,8 +51,9 @@ object Experiment {
 	}
 
 	case class Config(input: String = "b a n a n a",
-	                  inputFile: File = null,
-	                  outputFile: File = null,
+	                  inputFile: Option[File] = None,
+	                  outputFile: Option[File] = None,
+	                  pathOutputFile: Option[File] = None,
 	                  generateSimple: Seq[Int] = Seq(),
 	                  generateMulti: Seq[Int] = Seq(),
 	                  states: Int = 5,
@@ -86,10 +90,13 @@ object Experiment {
 				c.copy(input = x)
 			)
 			opt[File]("input-file").action( (x, c) =>
-				c.copy(inputFile = x)
+				c.copy(inputFile = Some(x))
 			)
 			opt[File]("output-file").action( (x, c) =>
-				c.copy(outputFile = x)
+				c.copy(outputFile = Some(x))
+			)
+			opt[File]("path-output-file").action( (x, c) =>
+				c.copy(pathOutputFile = Some(x))
 			)
 			opt[Seq[Int]]("generate-simple").action( (x, c) =>
 				c.copy(generateSimple = x)
@@ -192,10 +199,12 @@ object Experiment {
 			DataGenerator.generateLabeledDoc(pcfg, List("FIELD1WORD", "FIELD2WORD", "FIELD3WORD"),
 			                                 config.labelCoverage, new Random(0))
 		}
-		else if (config.inputFile != null)
-			LabeledDoc(Source.fromFile(config.inputFile), config.labelCoverage, config.truncate)
-		else
-			LabeledDoc(config.input, config.labelCoverage)
+		else {
+			config.inputFile match {
+				case Some(f) => LabeledDoc(Source.fromFile(f), config.labelCoverage, config.truncate)
+				case _ => LabeledDoc(config.input, config.labelCoverage)
+			}
+		}
 
 		val doc =
 			if (config.sequiturLattice) {
@@ -220,56 +229,64 @@ object Experiment {
 				DocumentLattice.fromTokens(labeledDoc.tokens, config.maxArcLength, labeledDoc.labels)
 			}
 
-		val log =
-			if (config.outputFile != null) new PrintWriter(config.outputFile)
-			else new PrintWriter("/dev/null")
+		val logFile = config.outputFile.getOrElse(new File("/dev/null"))
+		val logWriter = Managed(new PrintWriter(logFile))
 
-		log.write(doc.mkString())
-		log.write("\n\n")
+		logWriter.use { log =>
+			log.write(doc.mkString())
+			log.write("\n\n")
 
-		println(doc.mkString(limit=40))
+			println(doc.mkString(limit=40))
 
-		val docs = List(doc)
+			val docs = List(doc)
 
-		val model = runExperiment(config, config.states, docs, log)
+			val (model, charts) = runExperiment(config, config.states, docs, log)
 
-		config.rerunStates.foreach { n =>
-			val filteredDocs = docs.map { doc => model.viterbiChart(doc).filterArcs() }
-			runExperiment(config, n, filteredDocs, log)
+			config.pathOutputFile.foreach { f =>
+				new PrintWriter(f).use { writer =>
+					for (chart <- charts)
+						chart.printPath(writer)
+				}
+			}
+
+			config.rerunStates.foreach { n =>
+				val filteredDocs = charts.map { _.filterArcs() }
+				runExperiment(config, n, filteredDocs, log)
+			}
 		}
-
-		log.close()
 
 //		ammonite.Main().run("tokens" → tokens, "text" → text, "doc" → doc)
 	}
 
 	def runExperiment[SYM: ClassTag](config: Config, states: Int, docs: Seq[DocumentLattice[SYM]],
 	                                 log: PrintWriter)
-	: StructuredDocumentModel[SYM] = {
+	: (StructuredDocumentModel[SYM], Seq[ViterbiChart[SYM]]) = {
 
 		val initialModel =
 			StructuredDocumentModel.randomInitial(states, DocumentLattice.buildVocab(docs))
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
 				                 config.arcPriorWeight, config.flatStates, config.flatStateBoost)
-		val viterbiChart = model.viterbiChart(docs.head)
+		val viterbiCharts = docs.map(model.viterbiChart(_))
 
 		println(s"\nIterations: ${lossLog.size}")
 		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
-		println(viterbiChart.pathInfo(40, 80))
-		println()
 
 		log.write(s"\nfinal model:\n$model\n")
 		log.write(s"Iterations: ${lossLog.size}\n")
 		log.write(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" ") + "\n")
-		log.write(viterbiChart.pathInfo() + "\n\n")
 
-		viterbiChart.stateSummary(log, 10)
+		for (viterbiChart <- viterbiCharts.headOption) {
+			println(viterbiChart.pathInfo(40, 80))
+			println()
 
-		log.write("\n")
+			log.write(viterbiChart.pathInfo() + "\n\n")
+
+			viterbiChart.stateSummary(log, 10)
+		}
 
 //		println(model.viterbiChart(docs.head).toString)
 
-		model
+		(model, viterbiCharts)
 	}
 }
