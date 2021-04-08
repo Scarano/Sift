@@ -74,6 +74,7 @@ object Experiment {
 	                  allowThreshold: Double = 0.2,
 	                  enforceThreshold: Double = 0.8,
 	                  alpha: Double = 1.0,
+	                  orderPrior: Option[Double] = None,
 	                  labelCoverage: Double = 0.0,
 	                  tolerance: Double = 1e-4,
 	                  maxEpochs: Int = 99,
@@ -164,6 +165,9 @@ object Experiment {
 			)
 			opt[Double]("alpha").action( (x, c) =>
 				c.copy(alpha = x)
+			)
+			opt[Double]("order-prior").action( (x, c) =>
+				c.copy(orderPrior = Some(x))
 			)
 			opt[Double]("label-coverage").action( (x, c) =>
 				c.copy(labelCoverage = x)
@@ -262,8 +266,8 @@ object Experiment {
 	                                 log: PrintWriter)
 	: (StructuredDocumentModel[SYM], Seq[ViterbiChart[SYM]]) = {
 
-		val initialModel =
-			StructuredDocumentModel.randomInitial(states, DocumentLattice.buildVocab(docs))
+		val initialModel = StructuredDocumentModel.randomInitial(
+			states, DocumentLattice.buildVocab (docs), orderPrior=config.orderPrior)
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
 				                 config.arcPriorWeight, config.flatStates, config.flatStateBoost)

@@ -8,6 +8,8 @@ import breeze.stats.distributions.{Rand, RandBasis}
 import structureextractor.Vocab
 import structureextractor.Util.abbreviate
 
+import scala.math
+
 
 sealed trait TrainingStrategy
 case object FB extends TrainingStrategy
@@ -37,7 +39,8 @@ class StructuredDocumentModel[SYM](
   val vocab: Vocab[SYM],
   val initCost: DenseVector[Double],
   val transCost: DenseMatrix[Double],
-  val emitCost: DenseMatrix[Double]
+  val emitCost: DenseMatrix[Double],
+  val transMask: Option[DenseMatrix[Double]] = None
 ) {
 	val numStates: Int = transCost.rows
 
@@ -218,8 +221,8 @@ class StructuredDocumentModel[SYM](
 
 		// Hallucinate some observations and transitions to prevent numerical underflow
 		// TODO make this a parameter?
-		emitObs := softmax(emitObs, DenseMatrix.fill(emitObs.rows, emitObs.cols) {-20.0})
-		transObs := softmax(transObs, DenseMatrix.fill(transObs.rows, transObs.cols) {-20.0})
+		emitObs := softmax(emitObs, DenseMatrix.fill(emitObs.rows, emitObs.cols) {-100.0})
+		transObs := softmax(transObs, DenseMatrix.fill(transObs.rows, transObs.cols) {-100.0})
 
 //		println("emitObs = \n" +
 //			(0 until emitObs.cols).map(v => {
@@ -248,6 +251,8 @@ class StructuredDocumentModel[SYM](
 	//		println(emitObs)
 		}
 
+		transMask.foreach(transObs += _)
+
 		val newTransCost = transObs(::, *) - softmax(transObs, Axis._1)
 		val newEmitCost = emitObs(::, *) - softmax(emitObs, Axis._1)
 
@@ -259,7 +264,8 @@ class StructuredDocumentModel[SYM](
 			vocab,
 			initObs - softmax(initObs),
 			λ*newTransCost + (1-λ)*transCost,
-			λ*newEmitCost + (1-λ)*emitCost
+			λ*newEmitCost + (1-λ)*emitCost,
+			transMask
 		)
 
 		(newModel, meanDocEntropy)
@@ -460,9 +466,9 @@ object StructuredDocumentModel {
 	def uniformDist(size: Int): DenseVector[Double] =
 		uniformDistRows(1, size)(0, ::).t
 
-	def randomInitial[SYM](numStates: Int, vocab: Vocab[SYM], seed: Int = 123)
-		 : StructuredDocumentModel[SYM]	=
-	{
+	def randomInitial[SYM](numStates: Int, vocab: Vocab[SYM], seed: Int = 123,
+	                       orderPrior: Option[Double] = None)
+	: StructuredDocumentModel[SYM] = {
 		val randBasis = RandBasis.withSeed(seed)
 //		val p_init = if (numStates == 1) DenseVector(1.0)
 //			else DenseVector.tabulate(numStates) { i =>
@@ -471,7 +477,17 @@ object StructuredDocumentModel {
 		val p_init = DenseVector.tabulate(numStates) { _ => 1.0 / numStates }
 		val p_trans = randomDistRows(numStates, numStates, randBasis.uniform) * 0.1 + 0.9/numStates
 		val p_emit = randomDistRows(numStates, vocab.size, randBasis.uniform) * 0.1 + 0.9/vocab.size
-		new StructuredDocumentModel[SYM](vocab, log(p_init), log(p_trans), log(p_emit))
+
+		val transMask = orderPrior.map { x =>
+			DenseMatrix.tabulate(numStates, numStates) {
+//					(i, j) => if (i == j || (i + 1) % numStates == j) 0.0 else -100.0
+					case (i, j) => -x * math.floorMod(j - i, numStates).toDouble
+			}
+		}
+
+		transMask.foreach(p_trans *= exp(_))
+
+		new StructuredDocumentModel[SYM](vocab, log(p_init), log(p_trans), log(p_emit), transMask)
 	}
 
 }
