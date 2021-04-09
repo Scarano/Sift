@@ -442,8 +442,7 @@ object StructuredDocumentModel {
 		),
 	)
 
-	def makeLabelArray(labels: IndexedSeq[String], i: Int = 0, seen: Map[String, Int] = Map.empty)
-	: Array[String]	= {
+	def makeLabelArray(labels: IndexedSeq[String]): Array[String]	= {
 		val seen = mutable.LinkedHashSet.empty[String]
 		seen ++= labels
 		seen.toArray
@@ -481,7 +480,8 @@ object StructuredDocumentModel {
 		val transMask = orderPrior.map { x =>
 			DenseMatrix.tabulate(numStates, numStates) {
 //					(i, j) => if (i == j || (i + 1) % numStates == j) 0.0 else -100.0
-					case (i, j) => -x * math.floorMod(j - i, numStates).toDouble
+//					case (i, j) => -x * math.floorMod(j - i, numStates).toDouble
+					(i, j) => if (i == j || i + 1 == j || j == 0) 0.0 else -100.0
 			}
 		}
 
