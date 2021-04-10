@@ -16,7 +16,7 @@ object Experiment {
 		val numTests = 10
 		for (test <- 0 until numTests) {
 			val initialModel = StructuredDocumentModel.randomInitial(
-				numStates, DocumentLattice.buildVocab(docs), test)
+				numStates, 0, DocumentLattice.buildVocab(docs), test)
 			val (newModel, entropyLog) = initialModel.train(docs)
 			entropies ::= entropyLog.head
 			println(s"____________\nTest #$test")
@@ -205,10 +205,12 @@ object Experiment {
 		}
 		else {
 			config.inputFile match {
-				case Some(f) => LabeledDoc(Source.fromFile(f), config.labelCoverage, config.truncate)
+				case Some(f) => LabeledDoc(Source.fromFile(f), config.labelCoverage, None)
 				case _ => LabeledDoc(config.input, config.labelCoverage)
 			}
 		}
+
+		val numLabels = labeledDoc.labelNames.size
 
 		val doc =
 			if (config.sequiturLattice) {
@@ -227,7 +229,7 @@ object Experiment {
 			else if (config.frequencyCountLattice) {
 				val segmenter = FrequencySegmenter(labeledDoc.tokens, config.frequencyNGramSize,
 					config.minArcFreq, config.frequencyCutoff)
-				segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels)
+				segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels, config.truncate)
 			}
 			else {
 				DocumentLattice.fromTokens(labeledDoc.tokens, config.maxArcLength, labeledDoc.labels)
@@ -244,7 +246,7 @@ object Experiment {
 
 			val docs = List(doc)
 
-			val (model, charts) = runExperiment(config, config.states, docs, log)
+			val (model, charts) = runExperiment(config, config.states, numLabels, docs, log)
 
 			config.pathOutputFile.foreach { f =>
 				new PrintWriter(f).use { writer =>
@@ -255,19 +257,19 @@ object Experiment {
 
 			config.rerunStates.foreach { n =>
 				val filteredDocs = charts.map { _.filterArcs() }
-				runExperiment(config, n, filteredDocs, log)
+				runExperiment(config, n, numLabels, filteredDocs, log)
 			}
 		}
 
 //		ammonite.Main().run("tokens" → tokens, "text" → text, "doc" → doc)
 	}
 
-	def runExperiment[SYM: ClassTag](config: Config, states: Int, docs: Seq[DocumentLattice[SYM]],
-	                                 log: PrintWriter)
+	def runExperiment[SYM: ClassTag](config: Config, states: Int, labelStates: Int,
+	                                 docs: Seq[DocumentLattice[SYM]], log: PrintWriter)
 	: (StructuredDocumentModel[SYM], Seq[ViterbiChart[SYM]]) = {
 
 		val initialModel = StructuredDocumentModel.randomInitial(
-			states, DocumentLattice.buildVocab (docs), orderPrior=config.orderPrior)
+			states, labelStates, DocumentLattice.buildVocab (docs), orderPrior=config.orderPrior)
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
 				                 config.arcPriorWeight, config.flatStates, config.flatStateBoost)

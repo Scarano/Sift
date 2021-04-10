@@ -3,7 +3,7 @@ package structureextractor
 import scala.collection.mutable
 import scala.io.Source
 
-case class LabeledDoc(tokens: Array[String], labels: Array[Option[Int]], labelNames: Array[String])
+case class LabeledDoc(tokens: Array[String], labels: Array[Option[Int]], labelNames: Vector[String])
 
 object LabeledDoc {
 	sealed trait ReadState
@@ -11,7 +11,7 @@ object LabeledDoc {
 	case class Label(labelTokens: List[String]) extends ReadState
 	case class Labeled(label: Int) extends ReadState
 
-	def apply(tokens: Array[String], labels: Array[Option[Int]], labelNames: Array[String],
+	def apply(tokens: Array[String], labels: Array[Option[Int]], labelNames: Vector[String],
 	          coverage: Double)
 	: LabeledDoc = {
 		val coveredLabels = reduceLabelCoverage(labels, coverage)
@@ -62,7 +62,7 @@ object LabeledDoc {
 			}
 		}
 
-		LabeledDoc(tokenBuffer.toArray, labelBuffer.toArray, labelMap.keys.toArray, labelCoverage)
+		LabeledDoc(tokenBuffer.toArray, labelBuffer.toArray, labelMap.keys.toVector, labelCoverage)
 	}
 
 	def apply(source: Source, labelCoverage: Double, limit: Option[Int]): LabeledDoc = {

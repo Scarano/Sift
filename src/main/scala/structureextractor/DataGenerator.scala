@@ -63,7 +63,7 @@ object DataGenerator {
 				tokenBuffer += s
 				labelBuffer += labelMap.get(nonterms.head.name)
 		}
-		LabeledDoc(tokenBuffer.toArray, labelBuffer.toArray, includedLabels.toArray, labelCoverage)
+		LabeledDoc(tokenBuffer.toArray, labelBuffer.toArray, includedLabels.toVector, labelCoverage)
 	}
 
 

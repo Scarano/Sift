@@ -154,19 +154,27 @@ class FrequencySegmenter(
 		(1.0 - freqScoreWeight) * log(substringScore) + freqScoreWeight * log(freqScore)
 	}
 
-	def makeDocumentLattice(tokens: Array[String], labels: IndexedSeq[Option[Int]])
+	def makeDocumentLattice(tokens: Array[String], labels: IndexedSeq[Option[Int]],
+	                        truncate: Option[Int] = None)
 	: DocumentLattice[String] = {
 		val maxArcLen = tokens.length / maxArcRatio
 
 		val finder = new SubsequenceFinder(maxArcLen, minArcFreq, minScore, arcScore)
 		val substrings = finder.subsequences(tokens)
 
-		val arcs: Array[List[AArc[String]]] = Array.tabulate(tokens.length) { t =>
-			List(labels(t) match {
-				case Some(i) => LabeledArc(tokens(t), t+1, 0.0, i)
-				case None => Arc(tokens(t), t+1, 0.0)
-			})
-		}
+		val lastLabeledToken = labels.zipWithIndex.reverse.dropWhile(_._1.isEmpty).headOption.map(_._2)
+
+		val arcs: Array[List[AArc[String]]] =
+			Array.tabulate(truncate.getOrElse(tokens.length)) { t =>
+				List(labels(t) match {
+					case Some(i) => LabeledArc(tokens(t), t+1, 0.0, i)
+					case None if t <= lastLabeledToken.getOrElse(Int.MinValue) + 1 =>
+						// Unlabeled token within labeled region; assign the special state -1 to ensure that it
+						// gets a non-label state
+						LabeledArc(tokens(t), t+1, 0.0, -1)
+					case None => Arc(tokens(t), t+1, 0.0)
+				})
+			}
 
 		println()
 		for (ss <- substrings.sortBy(-_.score))
@@ -176,11 +184,16 @@ class FrequencySegmenter(
 		     ScoredSubstring(start, end, occ, score) = substring;
 		     s = tokens.slice(start, end).mkString(" ");
 		     t <- occ;
-			   u = t + (end - start)
+			   u = t + (end - start);
+			   if u <= arcs.length
     ) {
 			// TODO verify arc does not cross label boundary
 			arcs(t) ::= (labels(t) match {
 				case Some(i) => LabeledArc(s, u, score, i)
+				case None if t <= lastLabeledToken.getOrElse(Int.MinValue) + 1 =>
+					// Unlabeled token within labeled region; assign the special state -1 to ensure that it
+					// gets a non-label state
+					LabeledArc(s, u, score, -1)
 				case None => Arc(s, u, score)
 			})
 		}

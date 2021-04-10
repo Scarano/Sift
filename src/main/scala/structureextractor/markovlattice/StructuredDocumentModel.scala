@@ -36,6 +36,7 @@ case object FBThenViterbi extends TrainingStrategy
 	* @param emitCost emitCost(i, w) is cost of emitting word w from state i.
 	*/
 class StructuredDocumentModel[SYM](
+  val labelStates: Int,
   val vocab: Vocab[SYM],
   val initCost: DenseVector[Double],
   val transCost: DenseMatrix[Double],
@@ -62,7 +63,6 @@ class StructuredDocumentModel[SYM](
 		* the labeling.
 		*/
 	def forward(doc: DocumentLattice[SYM], arcLengthPenalty: Double = 0.0): DenseMatrix[Double] = {
-
 		val α = DenseMatrix.fill(doc.numNodes, numStates) {
 			Double.NegativeInfinity
 		}
@@ -74,13 +74,26 @@ class StructuredDocumentModel[SYM](
 		     u_label = if (u < doc.labels.length) doc.labels(u) else null;
 		     j <- 0 until numStates
     ) {
+//			val transCost_ij = arc match {
+//				// If it's a labeled arc and the label is wrong OR the arc has the special -1
+//				// ("do not label") label and the state is a valid label state...
+//				case LabeledArc(_, _, _, label) if label != -1 && label != i
+//				                                   || label == -1 && i < labelStates =>
+//					// ... then penalize arc (don't observe, effectively) for violating the labeling.
+//					Double.NegativeInfinity
+//				case LabeledArc(_, _, _, _) =>
+//					transCost(i, j)
+//				case _ =>
+//					transCost(i, j)
+//			}
+
 			val transCost_ij =
-				if (u_label == null)
+				if (u_label == null || j == u_label || u_label == -1 && j >= labelStates)
 					transCost(i, j)
-				else if (j == u_label) // All probability mass goes to the transition to the label state
-					0.0
 				else
 					Double.NegativeInfinity
+
+//			println(f"$t S$i -> $u S$j: $transCost_ij")
 			val arcCost = emitCost(i, vocab(arc.sym)) + arcLengthPenalty * arc.cost
 			val cost = α(t, i) + transCost_ij + arcCost
 //			println(s"$t S$i -> α($u S$j) += $cost " +
@@ -121,10 +134,14 @@ class StructuredDocumentModel[SYM](
 		     j <- 0 until numStates
     ) {
 			val transCost_ij = arc match {
-				case LabeledArc(_, _, _, label) if label == i =>
-					0.0
-				case LabeledArc(_, _, _, _) =>
+				// If it's a labeled arc and the label is wrong OR the arc has the special -1
+				// ("do not label") label and the state is a valid label state...
+				case LabeledArc(_, _, _, label) if label != -1 && label != i
+				                                   || label == -1 && i < labelStates =>
+					// ... then penalize arc (don't observe, effectively) for violating the labeling.
 					Double.NegativeInfinity
+				case LabeledArc(_, _, _, _) =>
+					transCost(i, j)
 				case _ =>
 					transCost(i, j)
 			}
@@ -185,10 +202,14 @@ class StructuredDocumentModel[SYM](
 				val ξ_tu = DenseMatrix.tabulate(numStates, numStates) { case (i, j) =>
 					// TODO - remove redundant computation
 					val transCost_ij = arc match {
-						case LabeledArc(_, _, _, label) if label == i =>
-							0.0
-						case LabeledArc(_, _, _, _) =>
+						// If it's a labeled arc and the label is wrong OR the arc has the special -1
+						// ("do not label") label and the state is a valid label state...
+						case LabeledArc(_, _, _, label) if label != -1 && label != i
+						                                   || label == -1 && i < labelStates =>
+							// ... then penalize arc (don't observe, effectively) for violating the labeling.
 							Double.NegativeInfinity
+						case LabeledArc(_, _, _, _) =>
+							transCost(i, j)
 						case _ =>
 							transCost(i, j)
 					}
@@ -261,6 +282,7 @@ class StructuredDocumentModel[SYM](
 		val λ = 1.0 // TODO: make this a parameter
 
 		val newModel = new StructuredDocumentModel[SYM](
+			labelStates,
 			vocab,
 			initObs - softmax(initObs),
 			λ*newTransCost + (1-λ)*transCost,
@@ -346,6 +368,7 @@ class StructuredDocumentModel[SYM](
 		println(s"Mean path entropy = $meanPathEntropy")
 
 		val newModel = new StructuredDocumentModel[SYM](
+			labelStates,
 			vocab,
 			log(initObs / sum(initObs)),
 			log(transObs(::, *) / sum(transObs, Axis._1)),
@@ -417,24 +440,28 @@ object StructuredDocumentModel {
 
 	def examples = Array(
 		new StructuredDocumentModel[String](
+			0,
 			Vocab.fromSymbols(Array("a", "b")),
 			log(DenseVector(0.5, 0.5)),
 			log(DenseMatrix((0.49, 0.51), (0.48, 0.52))),
 			log(DenseMatrix((0.45, 0.55), (0.47, 0.53)))
 		),
 		new StructuredDocumentModel[String](
+			0,
 			Vocab.fromSymbols(Array("a", "b", "c")),
 			log(DenseVector(0.5, 0.5)),
 			log(DenseMatrix((0.5, 0.5), (0.5, 0.5))),
 			log(DenseMatrix((0.8, 0.1, 0.1), (0.1, 0.45, 0.45)))
 		),
 		new StructuredDocumentModel[String](
+			0,
 			Vocab.fromSymbols(Array("%", "a", "b")),
 			log(DenseVector(0.98, 0.01, 0.01)),
 			log(DenseMatrix((0.02, 0.49, 0.49), (0.9, 0.05, 0.05), (0.9, 0.05, 0.05))),
 			log(DenseMatrix((0.8, 0.1, 0.1), (0.1, 0.8, 0.1), (0.1, 0.1, 0.8)))
 		),
 		new StructuredDocumentModel[String](
+			0,
 			Vocab.fromSymbols(Array("a", "b", "bba")),
 			-DenseVector(1.0, 1.0),
 			-DenseMatrix((1.0, 3.0), (3.0, 1.0)),
@@ -465,7 +492,7 @@ object StructuredDocumentModel {
 	def uniformDist(size: Int): DenseVector[Double] =
 		uniformDistRows(1, size)(0, ::).t
 
-	def randomInitial[SYM](numStates: Int, vocab: Vocab[SYM], seed: Int = 123,
+	def randomInitial[SYM](numStates: Int, labelStates: Int, vocab: Vocab[SYM], seed: Int = 123,
 	                       orderPrior: Option[Double] = None)
 	: StructuredDocumentModel[SYM] = {
 		val randBasis = RandBasis.withSeed(seed)
@@ -487,7 +514,8 @@ object StructuredDocumentModel {
 
 		transMask.foreach(p_trans *= exp(_))
 
-		new StructuredDocumentModel[SYM](vocab, log(p_init), log(p_trans), log(p_emit), transMask)
+		new StructuredDocumentModel[SYM](
+			labelStates, vocab, log(p_init), log(p_trans), log(p_emit), transMask)
 	}
 
 }
