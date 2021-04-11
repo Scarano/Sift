@@ -55,6 +55,10 @@ class StructuredDocumentModel[SYM](
 	// The letters t and u refer to node indexes in the doc lattices, with an arc from t to u.
 	// i and j are states at t and u, respectively.
 
+	@inline private final def emitCostOf(i: Int, sym: SYM): Double =
+//		(sym.toString.count(_ == ' ') + 1.0) * emitCost(i, vocab(sym))
+		emitCost(i, vocab(sym))
+
 	/**
 		* The "forward" algorithm. Computes the joint probability of arriving at a particular node
 		* in the lattice (and therefore generating the observed sequence up to that point), and being
@@ -94,7 +98,7 @@ class StructuredDocumentModel[SYM](
 					Double.NegativeInfinity
 
 //			println(f"$t S$i -> $u S$j: $transCost_ij")
-			val arcCost = emitCost(i, vocab(arc.sym)) + arcLengthPenalty * arc.cost
+			val arcCost = emitCostOf(i, arc.sym) + arcLengthPenalty * arc.cost
 			val cost = α(t, i) + transCost_ij + arcCost
 //			println(s"$t S$i -> α($u S$j) += $cost " +
 //					s"(${α(t, i)} + $transCost_ij + ${emitCost(i, vocab(arc.sym))} " +
@@ -145,7 +149,7 @@ class StructuredDocumentModel[SYM](
 				case _ =>
 					transCost(i, j)
 			}
-			val arcCost = emitCost(i, vocab(arc.sym)) + arcLengthPenalty * arc.cost
+			val arcCost = emitCostOf(i, arc.sym) + arcLengthPenalty * arc.cost
 			val cost = transCost_ij + arcCost + β(u, j)
 //			println(s"β($t S$i) += $cost -> $u S$j ($transCost_ij + emitCost)")
 			β(t, i) = softmax(β(t, i), cost)
@@ -213,7 +217,7 @@ class StructuredDocumentModel[SYM](
 						case _ =>
 							transCost(i, j)
 					}
-					val arcCost = emitCost(i, vocab(arc.sym)) + arcPriorWeight * arc.cost
+					val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
 					α(t, i) + transCost_ij + arcCost + β(u, j) - logPdoc
 				}
 //				println(s"ξ($t, $u) = \n$ξ_tu")
