@@ -3,8 +3,8 @@ package structureextractor.markovlattice
 import structureextractor.util.Managed
 import structureextractor.util.Managed._
 
-import java.io.{File, FileOutputStream, PrintWriter}
-import structureextractor.{DataGenerator, FrequencyCounter, FrequencyScorer, FrequencySegmenter, LabeledDoc}
+import java.io.{File, PrintWriter}
+import structureextractor.{DataGenerator, FrequencySegmenter, LabeledDoc}
 
 import scala.io.Source
 import scala.reflect.ClassTag
@@ -67,6 +67,8 @@ object Experiment {
 	                  frequencyScoreWeight: Double = 0.5,
 	                  frequencyNGramSize: Int = 3,
 	                  frequencyCutoff: Int = 5,
+	                  mergeSingletons: Boolean = false,
+	                  singletonCost: Double = 0.0,
 	                  subsequenceLattice: Boolean = false,
 	                  minArcFreq: Int = 5,
 	                  maxArcRatio: Int = 5,
@@ -144,6 +146,12 @@ object Experiment {
 			)
 			opt[Int]("frequency-cutoff").action( (x, c) =>
 				c.copy(frequencyCutoff = x)
+			)
+			opt[Unit]("merge-singletons").action( (_, c) =>
+				c.copy(mergeSingletons = true)
+			)
+			opt[Double]("singleton-cost").action( (x, c) =>
+				c.copy(singletonCost = x)
 			)
 			opt[Unit]("subsequence-lattice").action( (_, c) =>
 				c.copy(subsequenceLattice = true)
@@ -229,7 +237,8 @@ object Experiment {
 			else if (config.frequencyCountLattice) {
 				val segmenter = FrequencySegmenter(labeledDoc.tokens, config.frequencyNGramSize,
 					config.minArcFreq, config.frequencyCutoff)
-				segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels, config.truncate)
+				segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels,
+					                            config.singletonCost, config.truncate)
 			}
 			else {
 				DocumentLattice.fromTokens(labeledDoc.tokens, config.maxArcLength, labeledDoc.labels)
@@ -264,12 +273,21 @@ object Experiment {
 //		ammonite.Main().run("tokens" → tokens, "text" → text, "doc" → doc)
 	}
 
-	def runExperiment[SYM: ClassTag](config: Config, states: Int, labelStates: Int,
-	                                 docs: Seq[DocumentLattice[SYM]], log: PrintWriter)
-	: (StructuredDocumentModel[SYM], Seq[ViterbiChart[SYM]]) = {
+	def runExperiment(config: Config, states: Int, labelStates: Int,
+	                                 docs: Seq[DocumentLattice[String]], log: PrintWriter)
+	: (StructuredDocumentModel[String], Seq[ViterbiChart[String]]) = {
+
+		// TODO get rid of this hack after switching from String to a more general symbol class
+		val wordTransform: String => String =
+			if (config.mergeSingletons)
+				{ x => if (x contains " ") x else "<singleton>" }
+			else
+				identity[String](_)
+
+		val vocab = DocumentLattice.buildVocab(docs, wordTransform)
 
 		val initialModel = StructuredDocumentModel.randomInitial(
-			states, labelStates, DocumentLattice.buildVocab (docs), orderPrior=config.orderPrior)
+			states, labelStates, vocab, orderPrior=config.orderPrior)
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
 				                 config.arcPriorWeight, config.flatStates, config.flatStateBoost)

@@ -186,14 +186,15 @@ object DocumentLattice {
 		DocumentLattice(arcs)
 	}
 
-	def buildVocab[SYM: ClassTag](docs: Seq[DocumentLattice[SYM]]): Vocab[SYM] = {
+	def buildVocab[SYM: ClassTag](docs: Seq[DocumentLattice[SYM]],
+	                              transform: SYM => SYM = identity[SYM](_)) : Vocab[SYM] = {
 		val syms =
-			for (doc <- docs.toStream; // TODO: Is this doing what I want?
+			for (doc <- docs.view;
 			     arcs <- doc.arcs;
 		       arc <- arcs)
 			yield arc.sym
 
-		Vocab.build(syms)
+		Vocab.build(syms, transform)
 	}
 
 	def examples = Array(

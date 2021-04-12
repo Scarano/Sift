@@ -4,30 +4,33 @@ import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.jdk.CollectionConverters._
 
-class Vocab[SYM](val word_map: Array[SYM], val id_map: Map[SYM, Int]) {
+class Vocab[S](val word_map: Array[S], val id_map: Map[S, Int],
+               transform: S => S = identity[S](_))
+{
 	val id_map_fast = new java.util.HashMap(id_map.asJava)
 	def size: Int = word_map.length
 
-	def apply(token: SYM): Int = id_map_fast.get(token)
-	def apply(id: Int): SYM = word_map(id)
+	def apply(token: S): Int = id_map_fast.get(transform(token))
+	def apply(id: Int): S = word_map(id)
 }
 
 object Vocab {
-	def build[SYM: ClassTag](corpus: Seq[SYM]): Vocab[SYM] = {
-		val words = Array.newBuilder[SYM]
-		val ids = mutable.Map.empty[SYM, Int]
+	def build[S: ClassTag](corpus: Iterable[S], transform: S => S = identity[S](_)): Vocab[S] = {
+		val words = Array.newBuilder[S]
+		val ids = mutable.Map.empty[S, Int]
 		var next_id = 0
 		for (token <- corpus) {
-			if (!(ids contains token)) {
-				words += token
-				ids += ((token, next_id))
+			val cls = transform(token)
+			if (!(ids contains cls)) {
+				words += cls
+				ids += ((cls, next_id))
 				next_id += 1
 			}
 		}
-		new Vocab(words.result(), ids.toMap)
+		new Vocab(words.result(), ids.toMap, transform)
 	}
 
-	def fromSymbols[SYM: ClassTag](symbols: Seq[SYM]): Vocab[SYM] = {
-		new Vocab[SYM](symbols.toArray, symbols.zipWithIndex.toMap)
+	def fromSymbols[S: ClassTag](symbols: Seq[S]): Vocab[S] = {
+		new Vocab[S](symbols.toArray, symbols.zipWithIndex.toMap)
 	}
 }

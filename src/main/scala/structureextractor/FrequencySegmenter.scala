@@ -155,7 +155,7 @@ class FrequencySegmenter(
 	}
 
 	def makeDocumentLattice(tokens: Array[String], labels: IndexedSeq[Option[Int]],
-	                        truncate: Option[Int] = None)
+	                        singletonCost: Double = 0.0, truncate: Option[Int] = None)
 	: DocumentLattice[String] = {
 		val maxArcLen = tokens.length / maxArcRatio
 
@@ -167,12 +167,12 @@ class FrequencySegmenter(
 		val arcs: Array[List[AArc[String]]] =
 			Array.tabulate(truncate.getOrElse(tokens.length)) { t =>
 				List(labels(t) match {
-					case Some(i) => LabeledArc(tokens(t), t+1, 0.0, i)
+					case Some(i) => LabeledArc(tokens(t), t+1, -singletonCost, i)
 					case None if t <= lastLabeledToken.getOrElse(Int.MinValue) + 1 =>
 						// Unlabeled token within labeled region; assign the special state -1 to ensure that it
 						// gets a non-label state
-						LabeledArc(tokens(t), t+1, 0.0, -1)
-					case None => Arc(tokens(t), t+1, 0.0)
+						LabeledArc(tokens(t), t+1, -singletonCost, -1)
+					case None => Arc(tokens(t), t+1, -singletonCost)
 				})
 			}
 

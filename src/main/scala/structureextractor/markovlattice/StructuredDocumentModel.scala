@@ -235,10 +235,16 @@ class StructuredDocumentModel[SYM](
 
 				// Marginalize over destination states j to get total expected observations of this arc
 				// at position t and state i.
-				val arcObs = softmax(ξ_tu, Axis._1)
+//				val arcObs = softmax(ξ_tu, Axis._1)
 
 				// penalize long arcs
 //				arcObs :-= DenseVector.fill(arcObs.length) { arcPriorWeight * (u - t) }
+
+				val arcObs = // TODO XXX !!! Remove this hack by fixing bug
+					if (numStates == 1)
+						softmax(ξ_tu, Axis._1)
+					else
+						γ(t, ::).t + emitCost(::, vocab(arc.sym))
 
 				emitObs(::, vocab(arc.sym)) := softmax(emitObs(::, vocab(arc.sym)), arcObs)
 			}
