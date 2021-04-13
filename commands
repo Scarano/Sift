@@ -5,8 +5,5 @@ time sbt "runMain EbayTSV  data/rewgic-sold-2020-04-18-p1-labeled.html data/rewg
 runMain structureextractor.markovlattice.Experiment --input "a b c x a b c y a b c z a b c z a b c y a b c x a b c" --states 3 --max-arc-length 6 --max-epochs 100
 
 Works well:
-	1618196867314:runMain structureextractor.markovlattice.Experiment --output-file temp --input-file data/abcd --frequency-count-lattice --frequency-ngram-size 1 --arc-prior-weight 1 --min-arc-freq 3 --states 1 --strategy fb --tolerance 1e-4 --max-epochs 20 --merge-singletons --singleton-cost 3 --rerun-states 3
-Loss keeps increasing:
-1618197416501:runMain structureextractor.markovlattice.Experiment --output-file temp --input-file data/abcdef --frequency-count-lattice --frequency-ngram-size 1 --arc-prior-weight 1 --min-arc-freq 3 --states 1 --strategy fb --tolerance 1e-4 --max-epochs 20 --merge-singletons --singleton-cost 3 --rerun-states 2
-Loss keeps increasing:
-	1618195439433:runMain structureextractor.markovlattice.Experiment --output-file output/craigslist1-10~rerun20~sc10.out --input-file data/craigslist1-clipped-10.html --frequency-count-lattice --frequency-ngram-size 3 --arc-prior-weight 1 --min-arc-freq 5 --frequency-cutoff 5 --states 1 --strategy fb --max-epochs 20 --merge-singletons --singleton-cost 10 --rerun-states 20
+	1618196867314:runMain structureextractor.markovlattice.Experiment --output-file temp --input-file data/abcd --frequency-count-lattice --frequency-ngram-size 1 --arc-prior-weight 1 --min-arc-freq 3 --states 1 --strategy fb --tolerance 1e-4 --max-epochs 20 --merge-singletons --singleton-cost 1 --rerun-states 3
+	1618344166517:runMain structureextractor.markovlattice.Experiment --output-file temp --input-file data/abcdef --frequency-count-lattice --frequency-ngram-size 1 --arc-prior-weight 1 --min-arc-freq 3 --states 8 --strategy fb --tolerance 1e-4 --max-epochs 20 --merge-singletons --singleton-cost 1 --rerun-states 3

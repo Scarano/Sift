@@ -291,7 +291,7 @@ object Experiment {
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
 				                 config.arcPriorWeight, config.flatStates, config.flatStateBoost)
-		val viterbiCharts = docs.map(model.viterbiChart(_))
+		val viterbiCharts = docs.map(model.viterbiChart(_, config.arcPriorWeight))
 
 		println(s"\nIterations: ${lossLog.size}")
 		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" "))

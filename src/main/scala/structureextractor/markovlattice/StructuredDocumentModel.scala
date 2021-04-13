@@ -66,7 +66,7 @@ class StructuredDocumentModel[SYM](
 		* Note that when the doc has labels, the probabilities are additionally conditionalized on
 		* the labeling.
 		*/
-	def forward(doc: DocumentLattice[SYM], arcLengthPenalty: Double = 0.0): DenseMatrix[Double] = {
+	def forward(doc: DocumentLattice[SYM], arcPriorWeight: Double = 0.0): DenseMatrix[Double] = {
 		val α = DenseMatrix.fill(doc.numNodes, numStates) {
 			Double.NegativeInfinity
 		}
@@ -98,7 +98,7 @@ class StructuredDocumentModel[SYM](
 					Double.NegativeInfinity
 
 //			println(f"$t S$i -> $u S$j: $transCost_ij")
-			val arcCost = emitCostOf(i, arc.sym) + arcLengthPenalty * arc.cost
+			val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
 			val cost = α(t, i) + transCost_ij + arcCost
 //			println(s"$t S$i -> α($u S$j) += $cost " +
 //					s"(${α(t, i)} + $transCost_ij + ${emitCost(i, vocab(arc.sym))} " +
@@ -120,10 +120,10 @@ class StructuredDocumentModel[SYM](
 		* Note that when the doc has labels, all probabilities are additionally conditionalized on
 		* the labeling.
 		*/
-	def forwardBackward(doc: DocumentLattice[SYM], arcLengthPenalty: Double = 0.0)
+	def forwardBackward(doc: DocumentLattice[SYM], arcPriorWeight: Double = 0.0)
 		: (DenseMatrix[Double], DenseMatrix[Double], DenseMatrix[Double], Double) =
 	{
-		val α = forward(doc)
+		val α = forward(doc, arcPriorWeight)
 
 		// Marginalize over final states to get probability of generating doc
 		val logPdoc = softmax(α(doc.finalNode, ::))
@@ -149,7 +149,7 @@ class StructuredDocumentModel[SYM](
 				case _ =>
 					transCost(i, j)
 			}
-			val arcCost = emitCostOf(i, arc.sym) + arcLengthPenalty * arc.cost
+			val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
 			val cost = transCost_ij + arcCost + β(u, j)
 //			println(s"β($t S$i) += $cost -> $u S$j ($transCost_ij + emitCost)")
 			β(t, i) = softmax(β(t, i), cost)
@@ -179,7 +179,7 @@ class StructuredDocumentModel[SYM](
 		val emitObs = DenseMatrix.fill(numStates, vocab.size) { Double.NegativeInfinity }
 
 		for (doc <- docs) {
-      val (α, β, γ, logPdoc) = forwardBackward(doc)
+      val (α, β, γ, logPdoc) = forwardBackward(doc, arcPriorWeight)
 
 //			println(s"α = \n${α(0 to 4, ::)}\n...")
 //			println(s"β = \n...\n${β(-5 to -1, ::)}\n")
@@ -235,16 +235,10 @@ class StructuredDocumentModel[SYM](
 
 				// Marginalize over destination states j to get total expected observations of this arc
 				// at position t and state i.
-//				val arcObs = softmax(ξ_tu, Axis._1)
+				val arcObs = softmax(ξ_tu, Axis._1)
 
 				// penalize long arcs
 //				arcObs :-= DenseVector.fill(arcObs.length) { arcPriorWeight * (u - t) }
-
-				val arcObs = // TODO XXX !!! Remove this hack by fixing bug
-					if (numStates == 1)
-						softmax(ξ_tu, Axis._1)
-					else
-						γ(t, ::).t + emitCost(::, vocab(arc.sym))
 
 				emitObs(::, vocab(arc.sym)) := softmax(emitObs(::, vocab(arc.sym)), arcObs)
 			}
@@ -403,7 +397,7 @@ class StructuredDocumentModel[SYM](
 		     node2 = arc.target;
 		     state2 <- 0 until numStates)
 		{
-//			println(s"$node1 $state1 -> $node2 $state2 @ $start_cost")
+//			println(s"$node1 $state1 -> $node2 $state2; $arcPriorWeight * ${arc.cost}")
 			val cost = startCost + transCost(state1, state2)
 			if (cost > bestCost(node2, state2)) {
 				bestCost(node2, state2) = cost
@@ -419,7 +413,8 @@ class StructuredDocumentModel[SYM](
 		ViterbiChart(this, doc, bestPrevNode, bestPrevState, bestCost)
 	}
 
-	def viterbiPath(doc: DocumentLattice[SYM]): List[(Int, Int)] = viterbiChart(doc).bestPath
+	def viterbiPath(doc: DocumentLattice[SYM], arcPriorWeight: Double = 0.0): List[(Int, Int)] =
+		viterbiChart(doc, arcPriorWeight).bestPath
 
 	override def toString: String = {
 		List(
