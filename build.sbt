@@ -30,7 +30,7 @@ libraryDependencies += "org.scalanlp" %% "breeze-viz" % "1.1"
 libraryDependencies += "com.github.fommil.netlib" % "all" % "1.1.2" pomOnly()
 
 
-//mainClass in (Compile, run) := Some("TreeSandbox")
+mainClass in (Compile, run) := Some("structureextractor.markovlattice.Experiment")
 
 
 // Copy "resources" to target directory
@@ -66,3 +66,6 @@ fork in run := true
 //Test / run / fork := false
 
 //////////////
+
+
+enablePlugins(JavaAppPackaging)
