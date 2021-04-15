@@ -7,3 +7,8 @@ runMain structureextractor.markovlattice.Experiment --input "a b c x a b c y a b
 Works well:
 	1618196867314:runMain structureextractor.markovlattice.Experiment --output-file temp --input-file data/abcd --frequency-count-lattice --frequency-ngram-size 1 --arc-prior-weight 1 --min-arc-freq 3 --states 1 --strategy fb --tolerance 1e-4 --max-epochs 20 --merge-singletons --singleton-cost 1 --rerun-states 3
 	1618344166517:runMain structureextractor.markovlattice.Experiment --output-file temp --input-file data/abcdef --frequency-count-lattice --frequency-ngram-size 1 --arc-prior-weight 1 --min-arc-freq 3 --states 8 --strategy fb --tolerance 1e-4 --max-epochs 20 --merge-singletons --singleton-cost 1 --rerun-states 3
+
+Why does this try to make every state the same, but then --rerun does the right thing? The only difference between those cases is the redundant arcs.
+	runMain structureextractor.markovlattice.Experiment --output-file temp --input-file data/abcdef --frequency-count-lattice --frequency-ngram-size 1 --arc-prior-weight 1 --min-arc-freq 3 --states 8 --strategy fb --tolerance 1e-4 --max-epochs 20 --merge-data --data-arc-cost 1 --rerun-states 8
+What the hell is going on here?
+	runMain structureextractor.markovlattice.Experiment --output-file temp --input-file data/abcdef --frequency-count-lattice --frequency-ngram-size 1 --arc-prior-weight 1 --min-arc-freq 3 --states 5 --strategy fb --tolerance 1e-4 --max-epochs 20 --merge-data --data-arc-cost 1 --rerun-states 5

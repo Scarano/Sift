@@ -67,8 +67,9 @@ object Experiment {
 	                  frequencyScoreWeight: Double = 0.5,
 	                  frequencyNGramSize: Int = 3,
 	                  frequencyCutoff: Int = 5,
-	                  mergeSingletons: Boolean = false,
+	                  mergeData: Boolean = false,
 	                  singletonCost: Double = 0.0,
+	                  dataArcCost: Option[Double] = None,
 	                  subsequenceLattice: Boolean = false,
 	                  minArcFreq: Int = 5,
 	                  maxArcRatio: Int = 5,
@@ -147,11 +148,14 @@ object Experiment {
 			opt[Int]("frequency-cutoff").action( (x, c) =>
 				c.copy(frequencyCutoff = x)
 			)
-			opt[Unit]("merge-singletons").action( (_, c) =>
-				c.copy(mergeSingletons = true)
+			opt[Unit]("merge-data").action( (_, c) =>
+				c.copy(mergeData = true)
 			)
 			opt[Double]("singleton-cost").action( (x, c) =>
 				c.copy(singletonCost = x)
+			)
+			opt[Double]("data-arc-cost").action( (x, c) =>
+				c.copy(dataArcCost = Some(x))
 			)
 			opt[Unit]("subsequence-lattice").action( (_, c) =>
 				c.copy(subsequenceLattice = true)
@@ -237,8 +241,14 @@ object Experiment {
 			else if (config.frequencyCountLattice) {
 				val segmenter = FrequencySegmenter(labeledDoc.tokens, config.frequencyNGramSize,
 					config.minArcFreq, config.frequencyCutoff)
-				segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels,
-					                            config.singletonCost, config.truncate)
+				config.dataArcCost match {
+					case None =>
+						segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels,
+					                                config.singletonCost, config.truncate)
+					case Some(dataArcCost) =>
+						segmenter.makeDocumentLatticeWithDataArcs(labeledDoc.tokens, labeledDoc.labels,
+					                                            dataArcCost, config.truncate)
+				}
 			}
 			else {
 				DocumentLattice.fromTokens(labeledDoc.tokens, config.maxArcLength, labeledDoc.labels)
@@ -279,8 +289,8 @@ object Experiment {
 
 		// TODO get rid of this hack after switching from String to a more general symbol class
 		val wordTransform: String => String =
-			if (config.mergeSingletons)
-				{ x => if (x contains " ") x else "<singleton>" }
+			if (config.mergeData)
+				{ x => if (x.startsWith("⸬")) "<<data>>" else x}
 			else
 				identity[String](_)
 

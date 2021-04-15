@@ -2,15 +2,15 @@ package structureextractor
 
 import scala.io.Source
 import scala.collection.immutable.TreeMap
-
 import breeze.numerics.log
 import breeze.linalg.{DenseVector, linspace, max, softmax, sum}
 import breeze.stats.distributions.Gaussian
 import breeze.signal.{OptOverhang, convolve}
 import breeze.plot
 import breeze.plot.{DomainFunction, Figure}
-
 import structureextractor.markovlattice.{AArc, Arc, DocumentLattice, LabeledArc}
+
+import scala.collection.mutable
 
 
 class FrequencyScorer(
@@ -19,7 +19,12 @@ class FrequencyScorer(
 ) {
 	val freqMap: TreeMap[Int, Int] = TreeMap.from(freqs.iterator.map { case (i, freq) => (freq, i) })
 
-	def apply(freq: Int): Double = freqMap.minAfter(freq) match {
+	def apply(freq: Int): Double = freqMap.get(freq) match {
+		case Some(i) => freqCounts(i)
+		case None => 1e-9
+	}
+
+	def interpolatedScore(freq: Int): Double = freqMap.minAfter(freq) match {
 		case Some((hiFreq, j)) =>
 			if (hiFreq == freq) {
 				// Found exact frequency match. Return correponding count.
@@ -34,7 +39,7 @@ class FrequencyScorer(
 	}
 
 	def describe: String = {
-		var buf = new StringBuilder()
+		val buf = new StringBuilder()
 
 		val sortedFreqCounts = (freqs.valuesIterator zip freqCounts.valuesIterator).toArray
 		sortedFreqCounts.sortInPlaceBy(-_._2)
@@ -154,6 +159,64 @@ class FrequencySegmenter(
 		(1.0 - freqScoreWeight) * log(substringScore) + freqScoreWeight * log(freqScore)
 	}
 
+	def makeDocumentLatticeWithDataArcs(tokens: Array[String], labels: IndexedSeq[Option[Int]],
+	                                    dataCost: Double, truncate: Option[Int] = None)
+	: DocumentLattice[String] = {
+		val maxArcLen = tokens.length / maxArcRatio
+
+		val finder = new SubsequenceFinder(maxArcLen, minArcFreq, minScore, arcScore)
+		val substrings = finder.subsequences(tokens)
+
+		val lastLabeledToken = labels.zipWithIndex.reverse.dropWhile(_._1.isEmpty).headOption.map(_._2)
+
+		val arcs = Array.fill[List[AArc[String]]](truncate.getOrElse(tokens.length)) { Nil }
+
+		println()
+		for (ss <- substrings.sortBy(-_.score))
+			println(f"${ss.score}%.2f " + (ss.start until ss.end).map(tokens(_)).mkString(" "))
+
+		val vertices = mutable.TreeSet.empty[Int]
+
+		for (substring <- substrings;
+		     ScoredSubstring(start, end, occ, score) = substring;
+		     s = tokens.slice(start, end).mkString(" ");
+		     t <- occ;
+			   u = t + (end - start);
+			   if u <= arcs.length
+    ) {
+			vertices += t
+			vertices += u
+
+			// TODO verify arc does not cross label boundary
+			arcs(t) ::= (labels(t) match {
+				case Some(i) => LabeledArc(s, u, score, i)
+				case None if t <= lastLabeledToken.getOrElse(Int.MinValue) + 1 =>
+					// Unlabeled token within labeled region; assign the special state -1 to ensure that it
+					// gets a non-label state
+					LabeledArc(s, u, score, -1)
+				case None => Arc(s, u, score)
+			})
+		}
+
+		val vertexList = vertices.toList
+		for ((t, u) <- vertexList zip vertexList.drop(1);
+		     s = "⸬" + tokens.slice(t, u).mkString(" ")
+//		     if !arcs(t).exists(_.target == u) // Don't make redundant arc
+		) {
+			// TODO verify arc does not cross label boundary
+			arcs(t) ::= (labels(t) match {
+				case Some(i) => LabeledArc(s, u, -dataCost, i)
+				case None if t <= lastLabeledToken.getOrElse(Int.MinValue) + 1 =>
+					// Unlabeled token within labeled region; assign the special state -1 to ensure that it
+					// gets a non-label state
+					LabeledArc(s, u, -dataCost, -1)
+				case None => Arc(s, u, -dataCost)
+			})
+		}
+
+		DocumentLattice(arcs)
+	}
+
 	def makeDocumentLattice(tokens: Array[String], labels: IndexedSeq[Option[Int]],
 	                        singletonCost: Double = 0.0, truncate: Option[Int] = None)
 	: DocumentLattice[String] = {
@@ -166,13 +229,14 @@ class FrequencySegmenter(
 
 		val arcs: Array[List[AArc[String]]] =
 			Array.tabulate(truncate.getOrElse(tokens.length)) { t =>
+				val s = "⸬" + tokens(t)
 				List(labels(t) match {
-					case Some(i) => LabeledArc(tokens(t), t+1, -singletonCost, i)
+					case Some(i) => LabeledArc(s, t+1, -singletonCost, i)
 					case None if t <= lastLabeledToken.getOrElse(Int.MinValue) + 1 =>
 						// Unlabeled token within labeled region; assign the special state -1 to ensure that it
 						// gets a non-label state
-						LabeledArc(tokens(t), t+1, -singletonCost, -1)
-					case None => Arc(tokens(t), t+1, -singletonCost)
+						LabeledArc(s, t+1, -singletonCost, -1)
+					case None => Arc(s, t+1, -singletonCost)
 				})
 			}
 
