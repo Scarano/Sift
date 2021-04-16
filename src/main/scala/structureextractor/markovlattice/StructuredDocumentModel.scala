@@ -397,7 +397,7 @@ class StructuredDocumentModel[SYM](
 		     node2 = arc.target;
 		     state2 <- 0 until numStates)
 		{
-//			println(s"$node1 $state1 -> $node2 $state2; $arcPriorWeight * ${arc.cost}")
+//			println(s"$node1 $state1 -> $node2 $state2; $arcCost [${arc.sym}]")
 			val cost = startCost + transCost(state1, state2)
 			if (cost > bestCost(node2, state2)) {
 				bestCost(node2, state2) = cost

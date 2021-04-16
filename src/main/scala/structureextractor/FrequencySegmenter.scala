@@ -201,7 +201,7 @@ class FrequencySegmenter(
 		val vertexList = vertices.toList
 		for ((t, u) <- vertexList zip vertexList.drop(1);
 		     s = "⸬" + tokens.slice(t, u).mkString(" ")
-//		     if !arcs(t).exists(_.target == u) // Don't make redundant arc
+		     if !arcs(t).exists(_.target == u)   // DocumentLattice can't handle duplicate arcs
 		) {
 			// TODO verify arc does not cross label boundary
 			arcs(t) ::= (labels(t) match {
