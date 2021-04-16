@@ -101,8 +101,8 @@ class StructuredDocumentModel[SYM](
 			val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
 			val cost = α(t, i) + transCost_ij + arcCost
 //			println(s"$t S$i -> α($u S$j) += $cost " +
-//					s"(${α(t, i)} + $transCost_ij + ${emitCost(i, vocab(arc.sym))} " +
-//						s"[emitCost($i, ${vocab(arc.sym)})])")
+//					s"(${α(t, i)} + $transCost_ij + ${emitCostOf(i, arc.sym)} + " +
+//				     s"$arcPriorWeight * ${arc.cost})")
 			// TODO: make more efficient by doing a single softmax for each node/state pair
 			α(u, j) = softmax(α(u, j), cost)
 		}

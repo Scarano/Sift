@@ -110,8 +110,8 @@ object DocumentLattice {
 			  ) yield {
 					// TODO verify arc does not cross label boundary
 					labels(start) match {
-						case Some(i) => LabeledArc(s, end, end - start - 1.0, i)
-						case None => Arc(s, end, end - start - 1.0)
+						case Some(i) => LabeledArc(s, end, -(end - start - 1.0), i)
+						case None => Arc(s, end, -(end - start - 1.0))
 					}
 				}
 			).toList
