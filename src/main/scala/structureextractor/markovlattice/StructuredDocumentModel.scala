@@ -512,8 +512,8 @@ object StructuredDocumentModel {
 		val transMask = orderPrior.map { x =>
 			DenseMatrix.tabulate(numStates, numStates) {
 //					(i, j) => if (i == j || (i + 1) % numStates == j) 0.0 else -100.0
-//					case (i, j) => -x * math.floorMod(j - i, numStates).toDouble
-					(i, j) => if (i == j || i + 1 == j || j == 0) 0.0 else -100.0
+					case (i, j) => -x * math.floorMod(j - i - 1, numStates).toDouble
+//					(i, j) => if (i == j || i + 1 == j || j == 0) 0.0 else -100.0
 			}
 		}
 

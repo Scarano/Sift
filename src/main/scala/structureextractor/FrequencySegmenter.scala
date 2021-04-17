@@ -160,7 +160,8 @@ class FrequencySegmenter(
 	}
 
 	def makeDocumentLatticeWithDataArcs(tokens: Array[String], labels: IndexedSeq[Option[Int]],
-	                                    dataCost: Double, truncate: Option[Int] = None)
+	                                    dataLevels: Int, dataCost: Double,
+	                                    truncate: Option[Int] = None)
 	: DocumentLattice[String] = {
 		val maxArcLen = tokens.length / maxArcRatio
 
@@ -199,18 +200,21 @@ class FrequencySegmenter(
 		}
 
 		val vertexList = vertices.toList
-		for ((t, u) <- vertexList zip vertexList.drop(1);
-		     s = "⸬" + tokens.slice(t, u).mkString(" ")
-		     if !arcs(t).exists(_.target == u)   // DocumentLattice can't handle duplicate arcs
+		for (remaining <- vertexList.tails;
+		     u <- remaining.drop(1).take(dataLevels);
+		     t = remaining.head;
+		     if !arcs(t).exists(_.target == u);   // DocumentLattice can't handle duplicate arcs
+		     s = "⸬" + tokens.slice(t, u).mkString(" ");
+		     cost = -dataCost * (u - t)
 		) {
 			// TODO verify arc does not cross label boundary
 			arcs(t) ::= (labels(t) match {
-				case Some(i) => LabeledArc(s, u, -dataCost, i)
+				case Some(i) => LabeledArc(s, u, cost, i)
 				case None if t <= lastLabeledToken.getOrElse(Int.MinValue) + 1 =>
 					// Unlabeled token within labeled region; assign the special state -1 to ensure that it
 					// gets a non-label state
-					LabeledArc(s, u, -dataCost, -1)
-				case None => Arc(s, u, -dataCost)
+					LabeledArc(s, u, cost, -1)
+				case None => Arc(s, u, cost)
 			})
 		}
 

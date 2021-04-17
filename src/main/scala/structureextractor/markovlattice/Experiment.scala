@@ -69,7 +69,8 @@ object Experiment {
 	                  frequencyCutoff: Int = 5,
 	                  mergeData: Boolean = false,
 	                  singletonCost: Double = 0.0,
-	                  dataArcCost: Option[Double] = None,
+	                  dataArcLevels: Int = 0,
+	                  dataArcCost: Double = 0.0,
 	                  subsequenceLattice: Boolean = false,
 	                  minArcFreq: Int = 5,
 	                  maxArcRatio: Int = 5,
@@ -154,8 +155,11 @@ object Experiment {
 			opt[Double]("singleton-cost").action( (x, c) =>
 				c.copy(singletonCost = x)
 			)
+			opt[Int]("data-arc-levels").action( (x, c) =>
+				c.copy(dataArcLevels = x)
+			)
 			opt[Double]("data-arc-cost").action( (x, c) =>
-				c.copy(dataArcCost = Some(x))
+				c.copy(dataArcCost = x)
 			)
 			opt[Unit]("subsequence-lattice").action( (_, c) =>
 				c.copy(subsequenceLattice = true)
@@ -241,13 +245,13 @@ object Experiment {
 			else if (config.frequencyCountLattice) {
 				val segmenter = FrequencySegmenter(labeledDoc.tokens, config.frequencyNGramSize,
 					config.minArcFreq, config.frequencyCutoff)
-				config.dataArcCost match {
-					case None =>
-						segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels,
-					                                config.singletonCost, config.truncate)
-					case Some(dataArcCost) =>
-						segmenter.makeDocumentLatticeWithDataArcs(labeledDoc.tokens, labeledDoc.labels,
-					                                            dataArcCost, config.truncate)
+				if (config.dataArcLevels == 0) {
+					segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels,
+				                                config.singletonCost, config.truncate)
+				} else {
+					segmenter.makeDocumentLatticeWithDataArcs(
+					                              labeledDoc.tokens, labeledDoc.labels,
+					                              config.dataArcLevels, config.dataArcCost, config.truncate)
 				}
 			}
 			else {
