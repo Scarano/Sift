@@ -23,7 +23,7 @@ object LabeledDoc {
 
 	def apply(data: TraversableOnce[String], labelCoverage: Double, limit: Option[Int])
 	: LabeledDoc = {
-		val tokenize = new Tokenizer(preserveWhitespace = false, breakOutDigits = true)
+		val tokenize = new Tokenizer(preserveWhitespace = false, breakOutDigits = false)
 		val rawTokens = data.flatMap(tokenize(_))
 		val rawTokenIter = limit match {
 			case None => rawTokens.toIterable

@@ -302,7 +302,7 @@ object FrequencySegmenter {
 
 		val input = Source.fromFile(args(0))
 		val tokens = try {
-			val tokenize = new Tokenizer(preserveWhitespace = false, breakOutDigits = true)
+			val tokenize = new Tokenizer(preserveWhitespace = false, breakOutDigits = false)
 			input.getLines.flatMap(tokenize(_)).toList
 		}
 		finally {
