@@ -128,7 +128,7 @@ case class ViterbiChart[SYM](
 						field <- records.view.map(_(i))
 						sym <- field
 					} yield sym
-				).exists(_.toString.startsWith("⸬"))
+				).exists(!_.toString.startsWith("⸬"))
 				// TODO: For the love of God, replace "⸬" with an actual boolean field
 			} yield i
 			indexes.toVector

@@ -324,7 +324,7 @@ object Experiment {
 		// TODO get rid of this hack after switching from String to a more general symbol class
 		val wordTransform: String => String =
 			if (config.mergeData)
-				{ x => if (x.startsWith("⸬")) "<<data>>" else x}
+				{ x => if (!x.startsWith("⸬")) "<<data>>" else x}
 			else
 				identity[String](_)
 

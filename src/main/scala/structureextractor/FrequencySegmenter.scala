@@ -180,7 +180,7 @@ class FrequencySegmenter(
 
 		for (substring <- substrings;
 		     ScoredSubstring(start, end, occ, score) = substring;
-		     s = tokens.slice(start, end).mkString(" ");
+		     s = "⸬" + tokens.slice(start, end).mkString(" ");
 		     t <- occ;
 			   u = t + (end - start);
 			   if u <= arcs.length
@@ -204,7 +204,7 @@ class FrequencySegmenter(
 		     u <- remaining.drop(1).take(dataLevels);
 		     t = remaining.head;
 		     if !arcs(t).exists(_.target == u);   // DocumentLattice can't handle duplicate arcs
-		     s = "⸬" + tokens.slice(t, u).mkString(" ");
+		     s = tokens.slice(t, u).mkString(" ");
 		     cost = -dataCost * (u - t)
 		) {
 			// TODO verify arc does not cross label boundary
@@ -233,7 +233,7 @@ class FrequencySegmenter(
 
 		val arcs: Array[List[AArc[String]]] =
 			Array.tabulate(truncate.getOrElse(tokens.length)) { t =>
-				val s = "⸬" + tokens(t)
+				val s = tokens(t)
 				List(labels(t) match {
 					case Some(i) => LabeledArc(s, t+1, -singletonCost, i)
 					case None if t <= lastLabeledToken.getOrElse(Int.MinValue) + 1 =>
@@ -250,7 +250,7 @@ class FrequencySegmenter(
 
 		for (substring <- substrings;
 		     ScoredSubstring(start, end, occ, score) = substring;
-		     s = tokens.slice(start, end).mkString(" ");
+		     s = "⸬" + tokens.slice(start, end).mkString(" ");
 		     t <- occ;
 			   u = t + (end - start);
 			   if u <= arcs.length
