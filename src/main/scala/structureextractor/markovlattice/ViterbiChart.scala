@@ -97,17 +97,17 @@ case class ViterbiChart[SYM](
 		firstState: Option[Int],
 		path: List[(Int, Int)],
 		prevState: Int = -1,
-		acc: List[Vector[List[SYM]]] = List.empty)
-	: List[Vector[List[SYM]]] = path match {
+		acc: List[Vector[List[AArc[SYM]]]] = List.empty)
+	: List[Vector[List[AArc[SYM]]]] = path match {
 		case (t, i) :: (u, _) :: _ =>
 			val firstState_ = Some(firstState.getOrElse(i))
-			val acc2: List[Vector[List[SYM]]] = 
+			val acc2: List[Vector[List[AArc[SYM]]]] = 
 				if ((prevState - firstState_.get) % model.numStates < 0 &&
 						(i - firstState_.get) % model.numStates >= 0)
-					Vector.fill(model.numStates) { List.empty[SYM] } :: acc
+					Vector.fill(model.numStates) { List.empty[AArc[SYM]] } :: acc
 				else
 					acc
-			val newHeadVec = acc2.head.updated(i, doc.arcMap(t, u).sym :: acc2.head(i))
+			val newHeadVec = acc2.head.updated(i, doc.arcMap(t, u) :: acc2.head(i))
 			val acc3 = newHeadVec :: acc2.tail
 			asRecords(firstState_, path.tail, i, acc3)
 		case _ =>
@@ -116,7 +116,7 @@ case class ViterbiChart[SYM](
 			acc.reverse.map { rec => rec.drop(state0) ++ rec.take(state0) }
 	}
 
-	lazy val records: List[Vector[List[SYM]]] = asRecords(None, bestPath)
+	lazy val records: List[Vector[List[AArc[SYM]]]] = asRecords(None, bestPath)
 
 	lazy val recordDataColumns: Vector[Int] = records match {
 		case Nil => Vector()
@@ -125,16 +125,16 @@ case class ViterbiChart[SYM](
 				i <- 0 until record0.size
 				if (
 					for {
-						field <- records.view.map(_(i))
-						sym <- field
-					} yield sym
-				).exists(!_.toString.startsWith("⸬"))
+						record <- records.view
+						arc <- record(i)
+					} yield arc
+				).exists(!_.sym.toString.startsWith("⸬"))
 				// TODO: For the love of God, replace "⸬" with an actual boolean field
 			} yield i
 			indexes.toVector
 	}
 
-	lazy val filteredRecords: List[Vector[List[SYM]]] = 
+	lazy val filteredRecords: List[Vector[List[AArc[SYM]]]] = 
 		records.map( rec => recordDataColumns.map(rec(_)) )
 
 	override def toString: String = {
