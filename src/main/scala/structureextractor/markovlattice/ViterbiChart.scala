@@ -1,6 +1,6 @@
 package structureextractor.markovlattice
 
-import breeze.linalg._
+import breeze.linalg.{DenseMatrix, DenseVector, Axis, sum, argmax, *}
 import breeze.numerics._
 import structureextractor.Util.abbreviate
 
@@ -37,7 +37,7 @@ case class ViterbiChart[SYM](
 
 	def pathInfo(limit: Int = Int.MaxValue, arcLimit: Int = Int.MaxValue): String = {
 		val transitionStrings =
-			for (((t, i), (u, j)) <- (bestPath zip bestPath.tail).take(limit);
+			for (((t, i), (u, j)) <- (bestPath zip bestPath.drop(1)).take(limit);
 			     cost = bestCost(u, j) - bestCost(t, i);
 			     arcStr = abbreviate(doc.arcMap(t, u).sym.toString, arcLimit, showLength = true))
 				yield
@@ -52,7 +52,7 @@ case class ViterbiChart[SYM](
 	}
 
 	def printPath(f: PrintWriter): Unit = {
-		for (((t, i), (u, j)) <- (bestPath zip bestPath.tail);
+		for (((t, i), (u, j)) <- (bestPath zip bestPath.drop(1));
 		     arcStr = doc.arcMap(t, u).sym.toString)
 			f.write(arcStr + "\n")
 	}
@@ -91,6 +91,51 @@ case class ViterbiChart[SYM](
 				out.write(f"  $c%.0f ${model.vocab(w)}\n")
 		}
 	}
+
+	@tailrec
+	final def asRecords(
+		firstState: Option[Int],
+		path: List[(Int, Int)],
+		prevState: Int = -1,
+		acc: List[Vector[List[SYM]]] = List.empty)
+	: List[Vector[List[SYM]]] = path match {
+		case (t, i) :: (u, _) :: _ =>
+			val firstState_ = Some(firstState.getOrElse(i))
+			val acc2: List[Vector[List[SYM]]] = 
+				if ((prevState - firstState_.get) % model.numStates < 0 &&
+						(i - firstState_.get) % model.numStates >= 0)
+					Vector.fill(model.numStates) { List.empty[SYM] } :: acc
+				else
+					acc
+			val newHeadVec = acc2.head.updated(i, doc.arcMap(t, u).sym :: acc2.head(i))
+			val acc3 = newHeadVec :: acc2.tail
+			asRecords(firstState_, path.tail, i, acc3)
+		case _ =>
+			// Rotate fields so that first field comes first
+			val state0 = firstState.getOrElse(0)
+			acc.reverse.map { rec => rec.drop(state0) ++ rec.take(state0) }
+	}
+
+	lazy val records: List[Vector[List[SYM]]] = asRecords(None, bestPath)
+
+	lazy val recordDataColumns: Vector[Int] = records match {
+		case Nil => Vector()
+		case record0 :: _ =>
+			val indexes = for {
+				i <- 0 until record0.size
+				if (
+					for {
+						field <- records.view.map(_(i))
+						sym <- field
+					} yield sym
+				).exists(_.toString.startsWith("⸬"))
+				// TODO: For the love of God, replace "⸬" with an actual boolean field
+			} yield i
+			indexes.toVector
+	}
+
+	lazy val filteredRecords: List[Vector[List[SYM]]] = 
+		records.map( rec => recordDataColumns.map(rec(_)) )
 
 	override def toString: String = {
 		val pathSet = bestPath.toSet

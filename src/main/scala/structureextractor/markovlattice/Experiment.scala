@@ -1,9 +1,10 @@
 package structureextractor.markovlattice
 
 import structureextractor.util.Managed
-import structureextractor.util.Managed._
+import structureextractor.util.ManagedExtension._
 
 import java.io.{File, PrintWriter}
+import java.io.FileOutputStream
 import structureextractor.{DataGenerator, FrequencySegmenter, LabeledDoc}
 
 import scala.io.Source
@@ -54,6 +55,7 @@ object Experiment {
 	                  inputFile: Option[File] = None,
 	                  outputFile: Option[File] = None,
 	                  pathOutputFile: Option[File] = None,
+	                  tsvOutputFile: Option[File] = None,
 	                  generateSimple: Seq[Int] = Seq(),
 	                  generateMulti: Seq[Int] = Seq(),
 	                  states: Int = 5,
@@ -102,6 +104,9 @@ object Experiment {
 			)
 			opt[File]("path-output-file").action( (x, c) =>
 				c.copy(pathOutputFile = Some(x))
+			)
+			opt[File]("tsv-file").action( (x, c) =>
+				c.copy(tsvOutputFile = Some(x))
 			)
 			opt[Seq[Int]]("generate-simple").action( (x, c) =>
 				c.copy(generateSimple = x)
@@ -259,9 +264,9 @@ object Experiment {
 			}
 
 		val logFile = config.outputFile.getOrElse(new File("/dev/null"))
-		val logWriter = Managed(new PrintWriter(logFile))
+		val logWriter = new PrintWriter(logFile)
 
-		logWriter.use { log =>
+		Managed(logWriter) { log =>
 			log.write(doc.mkString())
 			log.write("\n\n")
 
@@ -270,6 +275,7 @@ object Experiment {
 			val docs = List(doc)
 
 			val (model, charts) = runExperiment(config, config.states, numLabels, docs, log)
+			var finalCharts = charts
 
 			config.pathOutputFile.foreach { f =>
 				new PrintWriter(f).use { writer =>
@@ -280,7 +286,31 @@ object Experiment {
 
 			config.rerunStates.foreach { n =>
 				val filteredDocs = charts.map { _.filterArcs() }
-				runExperiment(config, n, numLabels, filteredDocs, log)
+				val (model2, charts2) = runExperiment(config, n, numLabels, filteredDocs, log)
+
+				config.pathOutputFile.foreach { f =>
+					Managed(new PrintWriter(new FileOutputStream(f, true))) { writer =>
+						writer.println("\n\n\n==== rerun ====\n")
+						for (chart <- charts2)
+							chart.printPath(writer)
+					}
+				}
+
+				finalCharts = charts2
+			}
+
+			config.tsvOutputFile.foreach { tsvFile =>
+				Managed(new PrintWriter(tsvFile)) { tsvWriter => 
+					for {
+						chart <- finalCharts
+					  record <- chart.filteredRecords
+					} {
+						val sanitized = record map { fieldValues => 
+							fieldValues.mkString(";").replace("\t", " ")
+						}
+						tsvWriter.print(sanitized.mkString("", "\t", "\n"))
+					}
+				}
 			}
 		}
 
@@ -288,7 +318,7 @@ object Experiment {
 	}
 
 	def runExperiment(config: Config, states: Int, labelStates: Int,
-	                                 docs: Seq[DocumentLattice[String]], log: PrintWriter)
+	                  docs: Seq[DocumentLattice[String]], log: PrintWriter)
 	: (StructuredDocumentModel[String], Seq[ViterbiChart[String]]) = {
 
 		// TODO get rid of this hack after switching from String to a more general symbol class
