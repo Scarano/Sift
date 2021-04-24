@@ -97,17 +97,18 @@ case class ViterbiChart[SYM](
 		firstState: Option[Int],
 		path: List[(Int, Int)],
 		prevState: Int = -1,
-		acc: List[Vector[List[AArc[SYM]]]] = List.empty)
-	: List[Vector[List[AArc[SYM]]]] = path match {
+		acc: List[Vector[List[Span[SYM]]]] = List.empty)
+	: List[Vector[List[Span[SYM]]]] = path match {
 		case (t, i) :: (u, _) :: _ =>
 			val firstState_ = Some(firstState.getOrElse(i))
-			val acc2: List[Vector[List[AArc[SYM]]]] = 
+			val acc2: List[Vector[List[Span[SYM]]]] = 
 				if ((prevState - firstState_.get) % model.numStates < 0 &&
 						(i - firstState_.get) % model.numStates >= 0)
-					Vector.fill(model.numStates) { List.empty[AArc[SYM]] } :: acc
+					Vector.fill(model.numStates) { List.empty[Span[SYM]] } :: acc
 				else
 					acc
-			val newHeadVec = acc2.head.updated(i, doc.arcMap(t, u) :: acc2.head(i))
+			val newSpan = Span(t, doc.arcMap(t, u))
+			val newHeadVec = acc2.head.updated(i, newSpan :: acc2.head(i))
 			val acc3 = newHeadVec :: acc2.tail
 			asRecords(firstState_, path.tail, i, acc3)
 		case _ =>
@@ -116,7 +117,7 @@ case class ViterbiChart[SYM](
 			acc.reverse.map { rec => rec.drop(state0) ++ rec.take(state0) }
 	}
 
-	lazy val records: List[Vector[List[AArc[SYM]]]] = asRecords(None, bestPath)
+	lazy val records: List[Vector[List[Span[SYM]]]] = asRecords(None, bestPath)
 
 	lazy val recordDataColumns: Vector[Int] = records match {
 		case Nil => Vector()
@@ -126,15 +127,15 @@ case class ViterbiChart[SYM](
 				if (
 					for {
 						record <- records.view
-						arc <- record(i)
-					} yield arc
+						span <- record(i)
+					} yield span
 				).exists(!_.sym.toString.startsWith("⸬"))
 				// TODO: For the love of God, replace "⸬" with an actual boolean field
 			} yield i
 			indexes.toVector
 	}
 
-	lazy val filteredRecords: List[Vector[List[AArc[SYM]]]] = 
+	lazy val filteredRecords: List[Vector[List[Span[SYM]]]] = 
 		records.map( rec => recordDataColumns.map(rec(_)) )
 
 	override def toString: String = {
@@ -158,12 +159,8 @@ case class ViterbiChart[SYM](
 						(s"  %${desc.length}.${desc.length}s  " format emit, s"  $desc  ")
 				}
 			}
-			val tops = cells map {
-				_._1
-			}
-			val bottoms = cells map {
-				_._2
-			}
+			val tops = cells.map(_._1)
+			val bottoms = cells.map(_._2)
 			f"    | ${tops.mkString}\n$node%3d | ${bottoms.mkString}"
 		}
 		lines.mkString("\n")

@@ -10,6 +10,7 @@ import structureextractor.{DataGenerator, FrequencySegmenter, LabeledDoc}
 import scala.io.Source
 import scala.reflect.ClassTag
 import scala.util.Random
+import structureextractor.Evaluation
 
 object Experiment {
 	def multiTest[SYM: ClassTag](numStates: Int, docs: List[DocumentLattice[SYM]]): Unit = {
@@ -209,12 +210,12 @@ object Experiment {
 				throw new Exception("Invalid arguments")
 		}
 
-		val labeledDoc = if (config.generateSimple.nonEmpty) {
+		val testDoc = if (config.generateSimple.nonEmpty) {
 			if (config.generateSimple.size != 4)
 				throw new Exception(s"Wrong format for simpleItems parameters")
 			val Seq(size, prefixLength, descLength, descVocabSize) = config.generateSimple
 			val pcfg = DataGenerator.simpleItems(size, prefixLength, descLength, descVocabSize)
-			DataGenerator.generateLabeledDoc(pcfg, List("DESCWORD"), config.labelCoverage, new Random(0))
+			DataGenerator.generateLabeledDoc(pcfg, List("DESCWORD"), 1.0, new Random(0))
 		}
 		else if (config.generateMulti.nonEmpty) {
 			if (config.generateMulti.size != 1)
@@ -222,46 +223,61 @@ object Experiment {
 			val pcfg = DataGenerator.multiFieldItems(config.generateMulti.head,
 			                                         (2, 10), (5, 20), (10, 20))
 			DataGenerator.generateLabeledDoc(pcfg, List("FIELD1WORD", "FIELD2WORD", "FIELD3WORD"),
-			                                 config.labelCoverage, new Random(0))
+			                                 1.0, new Random(0))
 		}
 		else {
 			config.inputFile match {
-				case Some(f) => LabeledDoc(Source.fromFile(f), config.labelCoverage, None)
-				case _ => LabeledDoc(config.input, config.labelCoverage)
+				case Some(f) => LabeledDoc(Source.fromFile(f), 1.0, None)
+				case _ => LabeledDoc(config.input)
 			}
 		}
 
-		val numLabels = labeledDoc.labelNames.size
+		val trainingDoc = LabeledDoc(
+			testDoc.tokens, testDoc.labels, testDoc.labelNames, config.labelCoverage)
+
+		val numLabels = trainingDoc.labelNames.size
 
 		val doc =
 			if (config.sequiturLattice) {
-				val grammar = SequiturGrammar(labeledDoc.tokens).toStringGrammar
+				val grammar = SequiturGrammar(trainingDoc.tokens).toStringGrammar
 
 				DocumentLattice.fromStringGrammar(
 				              grammar, config.allowThreshold, config.enforceThreshold, config.alpha,
-											labeledDoc.labels)
+											trainingDoc.labels)
 			}
 			else if (config.subsequenceLattice) {
 				DocumentLattice.fromTokensUsingSubsequenceFinder(
-				              labeledDoc.tokens, config.maxArcRatio,
+				              trainingDoc.tokens, config.maxArcRatio,
 				              config.minArcFreq, config.allowThreshold, config.alpha,
-				              labeledDoc.labels)
+				              trainingDoc.labels)
 			}
 			else if (config.frequencyCountLattice) {
-				val segmenter = FrequencySegmenter(labeledDoc.tokens, config.frequencyNGramSize,
+				val segmenter = FrequencySegmenter(trainingDoc.tokens, config.frequencyNGramSize,
 					config.minArcFreq, config.frequencyCutoff)
 				if (config.dataArcLevels == 0) {
-					segmenter.makeDocumentLattice(labeledDoc.tokens, labeledDoc.labels,
+					segmenter.makeDocumentLattice(trainingDoc.tokens, trainingDoc.labels,
 				                                config.singletonCost, config.truncate)
 				} else {
 					segmenter.makeDocumentLatticeWithDataArcs(
-					                              labeledDoc.tokens, labeledDoc.labels,
+					                              trainingDoc.tokens, trainingDoc.labels,
 					                              config.dataArcLevels, config.dataArcCost, config.truncate)
 				}
 			}
 			else {
-				DocumentLattice.fromTokens(labeledDoc.tokens, config.maxArcLength, labeledDoc.labels)
+				DocumentLattice.fromTokens(trainingDoc.tokens, config.maxArcLength, trainingDoc.labels)
 			}
+
+		val convergenceHook = { chart: ViterbiChart[String] =>
+			val predLabels = chartLabeling(testDoc, chart)
+			val evaluation = Evaluation(testDoc, predLabels)
+
+			for (((prec, rec, fscore), labelName) <- evaluation.prfs zip testDoc.labelNames) {
+				println(f"$labelName%20s: $fscore%.3f (pre=$prec%.3f rec=$rec%.3f)")
+			}
+			println(f"Mean: ${evaluation.meanFscore}%.3f (pre=${evaluation.meanPrec}%.3f rec=${evaluation.meanRec}%.3f)")
+
+			evaluation.meanFscore
+		}
 
 		val logFile = config.outputFile.getOrElse(new File("/dev/null"))
 		val logWriter = new PrintWriter(logFile)
@@ -274,7 +290,7 @@ object Experiment {
 
 			val docs = List(doc)
 
-			val (model, charts) = runExperiment(config, config.states, numLabels, docs, log)
+			val (model, charts) = runExperiment(config, config.states, numLabels, docs, log, convergenceHook)
 			var finalCharts = charts
 
 			config.pathOutputFile.foreach { f =>
@@ -286,7 +302,7 @@ object Experiment {
 
 			config.rerunStates.foreach { n =>
 				val filteredDocs = charts.map { _.filterArcs() }
-				val (model2, charts2) = runExperiment(config, n, numLabels, filteredDocs, log)
+				val (model2, charts2) = runExperiment(config, n, numLabels, filteredDocs, log, convergenceHook)
 
 				config.pathOutputFile.foreach { f =>
 					Managed(new PrintWriter(new FileOutputStream(f, true))) { writer =>
@@ -312,13 +328,24 @@ object Experiment {
 					}
 				}
 			}
+
+			finalCharts.foreach { chart =>
+				val predLabels = chartLabeling(testDoc, chart)
+				val evaluation = Evaluation(testDoc, predLabels)
+
+				for (((prec, rec, fscore), labelName) <- evaluation.prfs zip testDoc.labelNames) {
+					println(f"$labelName%20s: $fscore%.3f (pre=$prec%.3f rec=$rec%.3f)")
+				}
+				println(f"Mean: ${evaluation.meanFscore}%.3f (pre=${evaluation.meanPrec}%.3f rec=${evaluation.meanRec}%.3f)")
+				println
+			}
 		}
 
 //		ammonite.Main().run("tokens" → tokens, "text" → text, "doc" → doc)
 	}
 
 	def runExperiment(config: Config, states: Int, labelStates: Int,
-	                  docs: Seq[DocumentLattice[String]], log: PrintWriter)
+	                  docs: Seq[DocumentLattice[String]], log: PrintWriter, convergenceHook: ViterbiChart[String] => Double)
 	: (StructuredDocumentModel[String], Seq[ViterbiChart[String]]) = {
 
 		// TODO get rid of this hack after switching from String to a more general symbol class
@@ -334,7 +361,8 @@ object Experiment {
 			states, labelStates, vocab, orderPrior=config.orderPrior)
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
-				                 config.arcPriorWeight, config.flatStates, config.flatStateBoost)
+				                 config.arcPriorWeight, config.flatStates, config.flatStateBoost,
+												 convergenceHook)
 		val viterbiCharts = docs.map(model.viterbiChart(_, config.arcPriorWeight))
 
 		println(s"\nIterations: ${lossLog.size}")
@@ -356,5 +384,51 @@ object Experiment {
 //		println(model.viterbiChart(docs.head).toString)
 
 		(model, viterbiCharts)
+	}
+
+	/**
+	 * Given labeled reference document and list of "record" Vectors (in which each column
+	 * corresponds to a state, and has zero or more spans of text that were observed for that
+	 * state), determine which label each column (state) is likely to map to.
+	 * 
+	 * @return Vector [[mapping]] in which [[mapping(state)]] is either [[Some(labelNumber)]]
+	 *   or [[None]] if no appropriate mapping was found for [[state]].
+	 */
+	def mapColumnsToLabels[SYM](doc: LabeledDoc, records: List[Vector[List[Span[SYM]]]])
+	: Vector[Option[Int]] = {
+		val numLabels = doc.labelNames.size
+		val numColumns = records.head.size
+
+		val mapping =
+			for (c <- 0 until numColumns) yield {
+				val numSpans = records.map( _(c).size ).sum
+				val labels = for {
+					record <- records
+					span <- record(c)
+					label <- doc.labels((span.start + span.end)/2)
+				} yield label
+				val labelCounts = labels.foldLeft(Vector.fill[Int](numLabels)(0)) { (counter, l) =>
+					counter.updated(l, counter(l) + 1)
+				}
+				// Only map to a label that accounts for a majority of the spans in this column.
+				labelCounts.zipWithIndex.filter(_._1 > numSpans / 2).headOption.map(_._2)
+			}
+		mapping.toVector
+	}
+
+	def chartLabeling[SYM](testDoc: LabeledDoc, chart: ViterbiChart[SYM]): Array[Option[Int]] = {
+		val labelMap = mapColumnsToLabels(testDoc, chart.records)
+
+		val predLabels = Array.fill[Option[Int]](testDoc.labels.size) { None }
+		for {
+			record <- chart.records
+			(field, i) <- record.zipWithIndex
+			label <- labelMap(i)
+			span <- field
+			t <- span.start until span.end
+		} {
+			predLabels(t) = Some(label)
+		}
+		predLabels
 	}
 }

@@ -299,19 +299,21 @@ class StructuredDocumentModel[SYM](
 
 	@tailrec
 	final def train(
-			               docs: Seq[DocumentLattice[SYM]],
-			               strategy: TrainingStrategy = FB,
-			               maxEpochs: Int = 99,
-			               tol: Double = 1e-5,
-			               arcPriorWeight: Double = 0.0,
-			               flatStates: Int = 0,
-			               flatStateBoost: Double = 0.0,
-			               prevCrossentropies: List[Double] = List.empty[Double]
+		docs: Seq[DocumentLattice[SYM]],
+		strategy: TrainingStrategy = FB,
+		maxEpochs: Int = 99,
+		tol: Double = 1e-5,
+		arcPriorWeight: Double = 0.0,
+		flatStates: Int = 0,
+		flatStateBoost: Double = 0.0,
+		convergenceHook: ViterbiChart[SYM] => Double = { _ => 0.0 },
+		prevCrossentropies: List[Double] = List.empty[Double]
   ): (StructuredDocumentModel[SYM], List[Double]) = {
 		val (newModel, meanCrossentropy) = strategy match {
 			case FB | FBThenViterbi => reestimate(docs, arcPriorWeight, flatStates, flatStateBoost)
 			case Viterbi => reestimateViterbi(docs, arcPriorWeight)
 		}
+		convergenceHook(viterbiChart(docs.head, arcPriorWeight))
 		val newCrossentropyList = meanCrossentropy :: prevCrossentropies
 		if (maxEpochs == 1)
 			return (newModel, newCrossentropyList)
@@ -320,7 +322,7 @@ class StructuredDocumentModel[SYM](
 				if (abs(1 - prevEntropy / meanCrossentropy) < tol) {
 					if (strategy == FBThenViterbi)
 						newModel.train(docs, Viterbi, maxEpochs - 1, tol, arcPriorWeight,
-						               flatStates, flatStateBoost,
+						               flatStates, flatStateBoost, convergenceHook,
 						               newCrossentropyList)
 					else
 						(newModel, newCrossentropyList)
@@ -335,11 +337,11 @@ class StructuredDocumentModel[SYM](
 //						}
 //					val newArcPriorWeight = max(2.0, arcPriorWeight - .5)
 					newModel.train(docs, strategy, maxEpochs - 1, tol, arcPriorWeight,
-					               flatStates, flatStateBoost,
+					               flatStates, flatStateBoost, convergenceHook,
 					               newCrossentropyList)
 				}
 			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol, arcPriorWeight,
-			                         flatStates, flatStateBoost,
+			                         flatStates, flatStateBoost, convergenceHook,
 			                         newCrossentropyList)
 		}
 	}
