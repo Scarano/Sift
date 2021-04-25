@@ -2,13 +2,12 @@ package structureextractor.markovlattice
 
 import scala.annotation.tailrec
 import scala.collection.mutable
+import scala.math
 import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.distributions.{Rand, RandBasis}
 import structureextractor.Vocab
 import structureextractor.Util.abbreviate
-
-import scala.math
 
 
 sealed trait TrainingStrategy
@@ -19,10 +18,11 @@ case object FBThenViterbi extends TrainingStrategy
 
 /**
 	* This is like an HMM, except that instead of generating a sentence, it generates a path
-	* through a lattice (what NLP people call a DAG). Each arc in the lattice corresponds to some
-	* sub-string in the document. An ordinary HMM generates a path in the trivial lattice which
-	* has one arc per token, with no branches. Therefore, this is a generalization of an HMM, and
-	* can be used as one, if given such a lattice.
+	* through a lattice (the NLP term for a DAG). Each arc in the lattice corresponds to some
+	* sub-string in the document. Each path corresponds to a possible way to dividing the document
+	* into arcs / sub-strings. An ordinary HMM generates a path in the trivial lattice which
+	* has one arc per token, with no branches. Therefore, this is a generalization of an HMM (and
+	* it can be used as one, if given a single-path lattice).
 	*
 	* It supports Viterbi decoding and Baum-Welch training.
 	*
@@ -41,6 +41,7 @@ class StructuredDocumentModel[SYM](
   val initCost: DenseVector[Double],
   val transCost: DenseMatrix[Double],
   val emitCost: DenseMatrix[Double],
+	val arcPriorWeight: Double = 0.0,
   val transMask: Option[DenseMatrix[Double]] = None
 ) {
 	val numStates: Int = transCost.rows
@@ -66,7 +67,7 @@ class StructuredDocumentModel[SYM](
 		* Note that when the doc has labels, the probabilities are additionally conditionalized on
 		* the labeling.
 		*/
-	def forward(doc: DocumentLattice[SYM], arcPriorWeight: Double = 0.0): DenseMatrix[Double] = {
+	def forward(doc: DocumentLattice[SYM]): DenseMatrix[Double] = {
 		val α = DenseMatrix.fill(doc.numNodes, numStates) {
 			Double.NegativeInfinity
 		}
@@ -120,10 +121,10 @@ class StructuredDocumentModel[SYM](
 		* Note that when the doc has labels, all probabilities are additionally conditionalized on
 		* the labeling.
 		*/
-	def forwardBackward(doc: DocumentLattice[SYM], arcPriorWeight: Double = 0.0)
+	def forwardBackward(doc: DocumentLattice[SYM])
 		: (DenseMatrix[Double], DenseMatrix[Double], DenseMatrix[Double], Double) =
 	{
-		val α = forward(doc, arcPriorWeight)
+		val α = forward(doc)
 
 		// Marginalize over final states to get probability of generating doc
 		val logPdoc = softmax(α(doc.finalNode, ::))
@@ -167,7 +168,7 @@ class StructuredDocumentModel[SYM](
 		* using forward-backward algorithm.
 		* @return tuple (new model, mean log likelihood)
 		*/
-	def reestimate(docs: Seq[DocumentLattice[SYM]], arcPriorWeight: Double = 0.0,
+	def reestimate(docs: Seq[DocumentLattice[SYM]],
 	               flatStates: Int = 0, flatStateBoost: Double = 0.0)
 	: (StructuredDocumentModel[SYM], Double) = {
 
@@ -179,7 +180,7 @@ class StructuredDocumentModel[SYM](
 		val emitObs = DenseMatrix.fill(numStates, vocab.size) { Double.NegativeInfinity }
 
 		for (doc <- docs) {
-      val (α, β, γ, logPdoc) = forwardBackward(doc, arcPriorWeight)
+      val (α, β, γ, logPdoc) = forwardBackward(doc)
 
 //			println(s"α = \n${α(0 to 4, ::)}\n...")
 //			println(s"β = \n...\n${β(-5 to -1, ::)}\n")
@@ -291,6 +292,7 @@ class StructuredDocumentModel[SYM](
 			initObs - softmax(initObs),
 			λ*newTransCost + (1-λ)*transCost,
 			λ*newEmitCost + (1-λ)*emitCost,
+			arcPriorWeight,
 			transMask
 		)
 
@@ -303,17 +305,16 @@ class StructuredDocumentModel[SYM](
 		strategy: TrainingStrategy = FB,
 		maxEpochs: Int = 99,
 		tol: Double = 1e-5,
-		arcPriorWeight: Double = 0.0,
 		flatStates: Int = 0,
 		flatStateBoost: Double = 0.0,
-		convergenceHook: ViterbiChart[SYM] => Double = { _ => 0.0 },
+		hooks: Seq[StructuredDocumentModel[SYM] => Unit] = Nil,
 		prevCrossentropies: List[Double] = List.empty[Double]
   ): (StructuredDocumentModel[SYM], List[Double]) = {
 		val (newModel, meanCrossentropy) = strategy match {
-			case FB | FBThenViterbi => reestimate(docs, arcPriorWeight, flatStates, flatStateBoost)
-			case Viterbi => reestimateViterbi(docs, arcPriorWeight)
+			case FB | FBThenViterbi => reestimate(docs, flatStates, flatStateBoost)
+			case Viterbi => reestimateViterbi(docs)
 		}
-		convergenceHook(viterbiChart(docs.head, arcPriorWeight))
+		hooks.foreach(_(this))
 		val newCrossentropyList = meanCrossentropy :: prevCrossentropies
 		if (maxEpochs == 1)
 			return (newModel, newCrossentropyList)
@@ -321,32 +322,24 @@ class StructuredDocumentModel[SYM](
 			case prevEntropy :: _ =>
 				if (abs(1 - prevEntropy / meanCrossentropy) < tol) {
 					if (strategy == FBThenViterbi)
-						newModel.train(docs, Viterbi, maxEpochs - 1, tol, arcPriorWeight,
-						               flatStates, flatStateBoost, convergenceHook,
+						newModel.train(docs, Viterbi, maxEpochs - 1, tol,
+						               flatStates, flatStateBoost, hooks,
 						               newCrossentropyList)
 					else
 						(newModel, newCrossentropyList)
 				}
 				else {
-//					val newArcPriorWeight = if (prevEntropy > meanCrossentropy) arcPriorWeight
-//						else {
-//							val newValue = max(0.0, arcPriorWeight - 0.25)
-//							println(s"Entropy increased ($prevEntropy -> $meanCrossentropy). " +
-//									s"Reducing arc prior weight to $newValue.")
-//							newValue
-//						}
-//					val newArcPriorWeight = max(2.0, arcPriorWeight - .5)
-					newModel.train(docs, strategy, maxEpochs - 1, tol, arcPriorWeight,
-					               flatStates, flatStateBoost, convergenceHook,
+					newModel.train(docs, strategy, maxEpochs - 1, tol,
+					               flatStates, flatStateBoost, hooks,
 					               newCrossentropyList)
 				}
-			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol, arcPriorWeight,
-			                         flatStates, flatStateBoost, convergenceHook,
+			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol,
+			                         flatStates, flatStateBoost, hooks,
 			                         newCrossentropyList)
 		}
 	}
 
-	def reestimateViterbi(docs: Seq[DocumentLattice[SYM]], arcPriorWeight: Double = 0.0)
+	def reestimateViterbi(docs: Seq[DocumentLattice[SYM]])
 	: (StructuredDocumentModel[SYM], Double) = {
 
 		var numDocs = 0
@@ -356,7 +349,7 @@ class StructuredDocumentModel[SYM](
 		val emitObs = DenseMatrix.fill(numStates, vocab.size) { 1e-15 }
 
 		for (doc <- docs) {
-			val chart = viterbiChart(doc, arcPriorWeight)
+			val chart = viterbiChart(doc)
 
 			numDocs += 1
 			sumLogPpath += chart.totalCost
@@ -385,7 +378,7 @@ class StructuredDocumentModel[SYM](
 	}
 
 
-	def viterbiChart(doc: DocumentLattice[SYM], arcPriorWeight: Double = 0.0)
+	def viterbiChart(doc: DocumentLattice[SYM])
 	: ViterbiChart[SYM] = {
 		val bestPrevNode = DenseMatrix.zeros[Int](doc.numNodes, numStates)
 		val bestPrevState = DenseMatrix.zeros[Int](doc.numNodes, numStates)
@@ -415,8 +408,8 @@ class StructuredDocumentModel[SYM](
 		ViterbiChart(this, doc, bestPrevNode, bestPrevState, bestCost)
 	}
 
-	def viterbiPath(doc: DocumentLattice[SYM], arcPriorWeight: Double = 0.0): List[(Int, Int)] =
-		viterbiChart(doc, arcPriorWeight).bestPath
+	def viterbiPath(doc: DocumentLattice[SYM]): List[(Int, Int)] =
+		viterbiChart(doc).bestPath
 
 	override def toString: String = {
 		List(
@@ -500,7 +493,7 @@ object StructuredDocumentModel {
 		uniformDistRows(1, size)(0, ::).t
 
 	def randomInitial[SYM](numStates: Int, labelStates: Int, vocab: Vocab[SYM], seed: Int = 123,
-	                       orderPrior: Option[Double] = None)
+	                       arcPriorWeight: Double = 0.0, orderPrior: Option[Double] = None)
 	: StructuredDocumentModel[SYM] = {
 		val randBasis = RandBasis.withSeed(seed)
 //		val p_init = if (numStates == 1) DenseVector(1.0)
@@ -522,7 +515,7 @@ object StructuredDocumentModel {
 		transMask.foreach(p_trans *= exp(_))
 
 		new StructuredDocumentModel[SYM](
-			labelStates, vocab, log(p_init), log(p_trans), log(p_emit), transMask)
+			labelStates, vocab, log(p_init), log(p_trans), log(p_emit), arcPriorWeight, transMask)
 	}
 
 }

@@ -267,17 +267,16 @@ object Experiment {
 				DocumentLattice.fromTokens(trainingDoc.tokens, config.maxArcLength, trainingDoc.labels)
 			}
 
-		val convergenceHook = { chart: ViterbiChart[String] =>
+		val trainCallbacks = List({ model: StructuredDocumentModel[String] =>
+			val chart = model.viterbiChart(doc)
 			val predLabels = chartLabeling(testDoc, chart)
-			val evaluation = Evaluation(testDoc, predLabels)
+			val eval = Evaluation(testDoc, predLabels)
 
-			for (((prec, rec, fscore), labelName) <- evaluation.prfs zip testDoc.labelNames) {
-				println(f"$labelName%20s: $fscore%.3f (pre=$prec%.3f rec=$rec%.3f)")
-			}
-			println(f"Mean: ${evaluation.meanFscore}%.3f (pre=${evaluation.meanPrec}%.3f rec=${evaluation.meanRec}%.3f)")
-
-			evaluation.meanFscore
-		}
+			println(
+				List(eval.meanFscore, eval.meanPrec, eval.meanRec)
+					.map(_.formatted("%.5f"))
+					.mkString("\t"))
+		})
 
 		val logFile = config.outputFile.getOrElse(new File("/dev/null"))
 		val logWriter = new PrintWriter(logFile)
@@ -290,7 +289,7 @@ object Experiment {
 
 			val docs = List(doc)
 
-			val (model, charts) = runExperiment(config, config.states, numLabels, docs, log, convergenceHook)
+			val (model, charts) = runExperiment(config, config.states, numLabels, docs, log, trainCallbacks)
 			var finalCharts = charts
 
 			config.pathOutputFile.foreach { f =>
@@ -302,7 +301,8 @@ object Experiment {
 
 			config.rerunStates.foreach { n =>
 				val filteredDocs = charts.map { _.filterArcs() }
-				val (model2, charts2) = runExperiment(config, n, numLabels, filteredDocs, log, convergenceHook)
+				val (model2, charts2) = runExperiment(
+					config, n, numLabels, filteredDocs, log, trainCallbacks)
 
 				config.pathOutputFile.foreach { f =>
 					Managed(new PrintWriter(new FileOutputStream(f, true))) { writer =>
@@ -344,9 +344,14 @@ object Experiment {
 //		ammonite.Main().run("tokens" → tokens, "text" → text, "doc" → doc)
 	}
 
-	def runExperiment(config: Config, states: Int, labelStates: Int,
-	                  docs: Seq[DocumentLattice[String]], log: PrintWriter, convergenceHook: ViterbiChart[String] => Double)
-	: (StructuredDocumentModel[String], Seq[ViterbiChart[String]]) = {
+	def runExperiment(
+		config: Config,
+		states: Int,
+		labelStates: Int,
+		docs: Seq[DocumentLattice[String]],
+		log: PrintWriter,
+		hooks: Seq[StructuredDocumentModel[String] => Unit]
+	): (StructuredDocumentModel[String], Seq[ViterbiChart[String]]) = {
 
 		// TODO get rid of this hack after switching from String to a more general symbol class
 		val wordTransform: String => String =
@@ -358,12 +363,12 @@ object Experiment {
 		val vocab = DocumentLattice.buildVocab(docs, wordTransform)
 
 		val initialModel = StructuredDocumentModel.randomInitial(
-			states, labelStates, vocab, orderPrior=config.orderPrior)
+			states, labelStates, vocab,
+			arcPriorWeight = config.arcPriorWeight, orderPrior = config.orderPrior)
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
-				                 config.arcPriorWeight, config.flatStates, config.flatStateBoost,
-												 convergenceHook)
-		val viterbiCharts = docs.map(model.viterbiChart(_, config.arcPriorWeight))
+				                 config.flatStates, config.flatStateBoost, hooks)
+		val viterbiCharts = docs.map(model.viterbiChart(_))
 
 		println(s"\nIterations: ${lossLog.size}")
 		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
