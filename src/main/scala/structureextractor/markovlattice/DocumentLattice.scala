@@ -155,37 +155,6 @@ object DocumentLattice {
 		DocumentLattice(arcs)
 	}
 
-	def fromStringGrammar(grammar: StringGrammar,
-	                      allowThreshold: Double, enforceThreshold: Double, alpha: Double)
-	: DocumentLattice[String] = {
-		val arcs = Array.fill(grammar.tokens.length) {List.empty[AArc[String]]}
-		for ((source, target, str) <- grammar.root.arcs(allowThreshold, enforceThreshold, alpha)
-		                                if target - source < grammar.tokens.length // exclude root
-    ) {
-			arcs(source) ::= Arc(str, target, target - source - 1.0)
-		}
-		DocumentLattice(arcs)
-	}
-
-	def fromStringGrammar(grammar: StringGrammar,
-	                      allowThreshold: Double, enforceThreshold: Double, alpha: Double,
-	                      labels: IndexedSeq[Option[Int]])
-	: DocumentLattice[String] = {
-
-		val arcs = Array.fill(grammar.tokens.length) {List.empty[AArc[String]]}
-		for ((source, target, str) <- grammar.root.arcs(allowThreshold, enforceThreshold, alpha)
-		                                if target - source < grammar.tokens.length; // exclude root
-			   (t, u) <- labelPartitions(labels, source, target)
-    ) {
-			val s = if (t == source && u == target) str else grammar.tokens.slice(t, u).mkString(" ")
-			arcs(t) ::= (labels(t) match {
-				case Some(i) => LabeledArc(s, u, target - source - 1.0, i)
-				case None => Arc(s, u, target - source - 1.0)
-			})
-		}
-		DocumentLattice(arcs)
-	}
-
 	def buildVocab[SYM: ClassTag](docs: Seq[DocumentLattice[SYM]],
 	                              transform: SYM => SYM = identity[SYM](_)) : Vocab[SYM] = {
 		val syms =

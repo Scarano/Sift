@@ -4,7 +4,6 @@ import scala.jdk.CollectionConverters._
 
 import structureextractor.rosettasuffixtree.{Node, ReversedSuffixTree, SuffixTree}
 import structureextractor.util.ResultTree
-import structureextractor.util.MaxOption._
 
 import SubsequenceFinder.substringScore
 

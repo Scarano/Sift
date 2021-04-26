@@ -13,28 +13,6 @@ import scala.util.Random
 import structureextractor.Evaluation
 
 object Experiment {
-	def multiTest[SYM: ClassTag](numStates: Int, docs: List[DocumentLattice[SYM]]): Unit = {
-		var entropies = List.empty[Double]
-		val numTests = 10
-		for (test <- 0 until numTests) {
-			val initialModel = StructuredDocumentModel.randomInitial(
-				numStates, 0, DocumentLattice.buildVocab(docs), test)
-			val (newModel, entropyLog) = initialModel.train(docs)
-			entropies ::= entropyLog.head
-			println(s"____________\nTest #$test")
-//			println(s"\ninitial model:\n$initialModel")
-			println(s"\nfinal model:\n$newModel")
-			println(s"\nIterations: ${entropyLog.size}")
-			println(s"Entropy log: $entropyLog")
-			println()
-			if (test == numTests - 1) {
-				println(newModel.viterbiChart(docs.head).toString)
-			}
-		}
-
-		println(s"Entropy range: ${entropies.min} - ${entropies.max}")
-	}
-
 	def demo(): Unit = {
 		val doc = DocumentLattice.examples(2)
 		var model = StructuredDocumentModel.examples(2)
@@ -77,9 +55,7 @@ object Experiment {
 	                  subsequenceLattice: Boolean = false,
 	                  minArcFreq: Int = 5,
 	                  maxArcRatio: Int = 5,
-	                  sequiturLattice: Boolean = false,
-	                  allowThreshold: Double = 0.2,
-	                  enforceThreshold: Double = 0.8,
+	                  arcScoreThreshold: Double = 0.2,
 	                  alpha: Double = 1.0,
 	                  orderPrior: Option[Double] = None,
 	                  labelCoverage: Double = 0.0,
@@ -176,14 +152,8 @@ object Experiment {
 			opt[Int]("max-arc-ratio").action( (x, c) =>
 				c.copy(maxArcRatio = x)
 			)
-			opt[Unit]("sequitur-lattice").action( (_, c) =>
-				c.copy(sequiturLattice = true)
-			)
-			opt[Double]("allow-threshold").action( (x, c) =>
-				c.copy(allowThreshold = x)
-			)
-			opt[Double]("enforce-threshold").action( (x, c) =>
-				c.copy(enforceThreshold = x)
+			opt[Double]("arc-score-threshold").action( (x, c) =>
+				c.copy(arcScoreThreshold = x)
 			)
 			opt[Double]("alpha").action( (x, c) =>
 				c.copy(alpha = x)
@@ -238,17 +208,10 @@ object Experiment {
 		val numLabels = trainingDoc.labelNames.size
 
 		val doc =
-			if (config.sequiturLattice) {
-				val grammar = SequiturGrammar(trainingDoc.tokens).toStringGrammar
-
-				DocumentLattice.fromStringGrammar(
-				              grammar, config.allowThreshold, config.enforceThreshold, config.alpha,
-											trainingDoc.labels)
-			}
-			else if (config.subsequenceLattice) {
+			if (config.subsequenceLattice) {
 				DocumentLattice.fromTokensUsingSubsequenceFinder(
 				              trainingDoc.tokens, config.maxArcRatio,
-				              config.minArcFreq, config.allowThreshold, config.alpha,
+				              config.minArcFreq, config.arcScoreThreshold, config.alpha,
 				              trainingDoc.labels)
 			}
 			else if (config.frequencyCountLattice) {
@@ -340,8 +303,6 @@ object Experiment {
 				println
 			}
 		}
-
-//		ammonite.Main().run("tokens" → tokens, "text" → text, "doc" → doc)
 	}
 
 	def runExperiment(
@@ -368,7 +329,7 @@ object Experiment {
 		val (model, lossLog) =
 			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
 				                 config.flatStates, config.flatStateBoost, hooks)
-		val viterbiCharts = docs.map(model.viterbiChart(_))
+		val viterbiCharts = docs.map(model.viterbiChart)
 
 		println(s"\nIterations: ${lossLog.size}")
 		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
@@ -416,7 +377,7 @@ object Experiment {
 					counter.updated(l, counter(l) + 1)
 				}
 				// Only map to a label that accounts for a majority of the spans in this column.
-				labelCounts.zipWithIndex.filter(_._1 > numSpans / 2).headOption.map(_._2)
+				labelCounts.zipWithIndex.find(_._1 > numSpans / 2).map(_._2)
 			}
 		mapping.toVector
 	}
