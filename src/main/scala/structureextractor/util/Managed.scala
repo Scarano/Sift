@@ -1,11 +1,12 @@
 package structureextractor.util
 
 import java.io.Closeable
+import scala.language.implicitConversions
 
 /**
- * This is provides the [[use]] extension method to [[Closeable]]s (e.g., [[FileWriter]]s).
+ * This is provides the `use` extension method to [[Closeable]]s (e.g., `FileWriter`s).
  * 
- * [[use]] invokes the provided function on the [[Closeable]], and then [[close()]]s it, so that 
+ * `use` invokes the provided function on the [[Closeable]], and then `close()` it, so that
  * the known lifetime of the [[Closeable]] is clearly visible, with no possibility of forgetting to
  * close it in some abstruse circumstance.
  */
@@ -33,7 +34,7 @@ object ManagedExtension {
 	* The non-"extension" version must be constructed explicitly, which results in easier-to-read
 	* code, in my opinion.
 	* 
-	* For syntactic convenience, this version makes [[apply]] a synonym of [[use]].
+	* For syntactic convenience, this version makes `apply` a synonym of `use`.
 	*/
 class Managed[A <: Closeable](resource: A) extends ManagedExtension(resource) {
 	def apply[R](f: A => R): R = use(f)

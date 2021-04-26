@@ -1,10 +1,10 @@
 package structureextractor.markovlattice
 
-import breeze.linalg.{DenseMatrix, DenseVector, Axis, sum, argmax, *}
+import breeze.linalg.{DenseMatrix, Axis, sum, argmax, *}
 import breeze.numerics._
 import structureextractor.Util.abbreviate
 
-import java.io.{File, PrintWriter}
+import java.io.PrintWriter
 import scala.annotation.tailrec
 
 /**
@@ -52,7 +52,7 @@ case class ViterbiChart[SYM](
 	}
 
 	def printPath(f: PrintWriter): Unit = {
-		for (((t, i), (u, j)) <- (bestPath zip bestPath.drop(1));
+		for (((t, i), (u, j)) <- bestPath zip bestPath.drop(1);
 		     arcStr = doc.arcMap(t, u).sym.toString)
 			f.write(arcStr + "\n")
 	}
@@ -123,7 +123,7 @@ case class ViterbiChart[SYM](
 		case Nil => Vector()
 		case record0 :: _ =>
 			val indexes = for {
-				i <- 0 until record0.size
+				i <- record0.indices
 				if (
 					for {
 						record <- records.view

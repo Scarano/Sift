@@ -19,15 +19,15 @@ object LabeledDoc {
 	}
 
 	def apply(text: String, labelCoverage: Double = 1.0, limit: Option[Int] = None): LabeledDoc =
-		apply(List(text), labelCoverage, limit)
+		apply(List(text).iterator, labelCoverage, limit)
 
-	def apply(data: TraversableOnce[String], labelCoverage: Double, limit: Option[Int])
+	def apply(data: Iterator[String], labelCoverage: Double, limit: Option[Int])
 	: LabeledDoc = {
 		val tokenize = new Tokenizer(preserveWhitespace = false, breakOutDigits = false)
 		val rawTokens = data.flatMap(tokenize(_))
 		val rawTokenIter = limit match {
-			case None => rawTokens.toIterable
-			case Some(n) => rawTokens.toIterable.take(n)
+			case None => rawTokens
+			case Some(n) => rawTokens.take(n)
 		}
 
 		val tokenBuffer = mutable.ArrayBuffer.empty[String]

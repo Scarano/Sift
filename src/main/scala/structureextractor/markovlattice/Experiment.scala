@@ -8,7 +8,6 @@ import java.io.FileOutputStream
 import structureextractor.{DataGenerator, FrequencySegmenter, LabeledDoc}
 
 import scala.io.Source
-import scala.reflect.ClassTag
 import scala.util.Random
 import structureextractor.Evaluation
 
@@ -294,12 +293,12 @@ object Experiment {
 
 			finalCharts.foreach { chart =>
 				val predLabels = chartLabeling(testDoc, chart)
-				val evaluation = Evaluation(testDoc, predLabels)
+				val eval = Evaluation(testDoc, predLabels)
 
-				for (((prec, rec, fscore), labelName) <- evaluation.prfs zip testDoc.labelNames) {
+				for (((prec, rec, fscore), labelName) <- eval.prfs zip testDoc.labelNames) {
 					println(f"$labelName%20s: $fscore%.3f (pre=$prec%.3f rec=$rec%.3f)")
 				}
-				println(f"Mean: ${evaluation.meanFscore}%.3f (pre=${evaluation.meanPrec}%.3f rec=${evaluation.meanRec}%.3f)")
+				println(f"Mean: ${eval.meanFscore}%.3f (pre=${eval.meanPrec}%.3f rec=${eval.meanRec}%.3f)")
 				println
 			}
 		}
@@ -319,7 +318,7 @@ object Experiment {
 			if (config.mergeData)
 				{ x => if (!x.startsWith("⸬")) "<<data>>" else x }
 			else
-				identity[String](_)
+				identity
 
 		val vocab = DocumentLattice.buildVocab(docs, wordTransform)
 
@@ -357,8 +356,8 @@ object Experiment {
 	 * corresponds to a state, and has zero or more spans of text that were observed for that
 	 * state), determine which label each column (state) is likely to map to.
 	 * 
-	 * @return Vector [[mapping]] in which [[mapping(state)]] is either [[Some(labelNumber)]]
-	 *   or [[None]] if no appropriate mapping was found for [[state]].
+	 * @return Vector `mapping` in which `mapping(state)` is either `Some(labelNumber)`
+	 *   or [[None]] if no appropriate mapping was found for `state`.
 	 */
 	def mapColumnsToLabels[SYM](doc: LabeledDoc, records: List[Vector[List[Span[SYM]]]])
 	: Vector[Option[Int]] = {
@@ -385,7 +384,7 @@ object Experiment {
 	def chartLabeling[SYM](testDoc: LabeledDoc, chart: ViterbiChart[SYM]): Array[Option[Int]] = {
 		val labelMap = mapColumnsToLabels(testDoc, chart.records)
 
-		val predLabels = Array.fill[Option[Int]](testDoc.labels.size) { None }
+		val predLabels = Array.fill[Option[Int]](testDoc.labels.length) { None }
 		for {
 			record <- chart.records
 			(field, i) <- record.zipWithIndex

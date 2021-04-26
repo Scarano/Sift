@@ -3,9 +3,7 @@ package structureextractor
 import scala.io.Source
 import scala.collection.immutable.TreeMap
 import breeze.numerics.log
-import breeze.linalg.{DenseVector, linspace, max, softmax, sum}
-import breeze.stats.distributions.Gaussian
-import breeze.signal.{OptOverhang, convolve}
+import breeze.linalg.{DenseVector, sum}
 import breeze.plot
 import breeze.plot.{DomainFunction, Figure}
 import structureextractor.markovlattice.{AArc, Arc, DocumentLattice, LabeledArc}
@@ -81,19 +79,6 @@ class FrequencyCounter(
 		val freqs = DenseVector(freqHistPairs.map(_._1))
 		val freqCounts = DenseVector(freqHistPairs.map(_._2.toDouble))
 
-//		val convSamples = max(10, freqHist.size/20)
-//		val convStddev = convSamples/2.0
-//		val convKernel = Gaussian(0.0, convStddev)
-//				                 .pdf(linspace(-convSamples, convSamples, 2*convSamples+1))
-//		val localMeans = convolve(freqCounts, convKernel, overhang=OptOverhang.PreserveLength)
-//		val normFreqCounts = freqCounts - localMeans
-//
-//		//FrequencySegmenter.scatterPlot(log(freqs), log(normFreqCounts), { _ => .01 })
-//
-//		val freqScores = (freqs.toArray zip normFreqCounts.toArray)
-//		                   .slice(convSamples, freqs.size - convSamples)
-//		freqScores.sortBy(-_._2).view.take(maxPoints).toList
-
 		(freqs, freqCounts)
 
 //		val freqScores = for (((freq, _), i) <- freqHistPairs.zipWithIndex)
@@ -104,39 +89,15 @@ class FrequencyCounter(
 //		println(freqScores.mkString("Array(", ", ", ")"))
 //		freqScores.sortBy(-_._2).view.take(maxPoints).toList
 	}
-
-//	def frequencyModeScore(freqIndex: Int, freqHist: Seq[(Int, Int)]): Double = {
-//		val (freq, freqCount) = freqHist(freqIndex)
-//
-//		var neighborhoodStart = freqIndex
-//		while (neighborhoodStart > 0 && neighborhoodStart > (freqIndex / neighborhoodRatio).toInt)
-//			neighborhoodStart -= 1
-//		var neighborhoodEnd = freqIndex
-//		while (neighborhoodEnd < freqHist.size
-//				           && neighborhoodEnd < (freqIndex * neighborhoodRatio).toInt + 1)
-//			neighborhoodEnd += 1
-//
-//		val neighborhood = freqHist.slice(neighborhoodStart, neighborhoodEnd)
-//		val nhMean = neighborhood.map(_._2).sum/(neighborhoodEnd - neighborhoodStart)
-//
-//		(freqCount.toDouble + baselineCount) / (nhMean + baselineCount)
-//	}
 }
 
 object FrequencyCounter {
-//	def countBigrams(tokens: Iterator[String]): Map[(String, String), Int] = {
-//		val bigrams = tokens.sliding(2, 1).map { pair => (pair.head, pair.tail.head) }
-//		bigrams.foldLeft(Map.empty[(String, String), Int]) { (c, w) =>
-//			c + (w -> (c.getOrElse(w, 0) + 1))
-//		}
-//	}
 	def countNGrams(tokens: Iterator[String], n: Int): Map[Seq[String], Int] = {
 		val nGrams = tokens.sliding(n, 1)
 		nGrams.foldLeft(Map.empty[Seq[String], Int]) { (c, w) =>
 			c + (w -> (c.getOrElse(w, 0) + 1))
 		}
 	}
-
 }
 
 class FrequencySegmenter(
@@ -182,7 +143,7 @@ class FrequencySegmenter(
 		     ScoredSubstring(start, end, occ, score) = substring;
 		     s = "⸬" + tokens.slice(start, end).mkString(" ");
 		     t <- occ;
-			   u = t + (end - start);
+			   u = t + (end - start)
 			   if u <= arcs.length
     ) {
 			vertices += t
@@ -201,9 +162,9 @@ class FrequencySegmenter(
 
 		val vertexList = vertices.toList
 		for (remaining <- vertexList.tails;
-		     u <- remaining.drop(1).take(dataLevels);
-		     t = remaining.head;
-		     if !arcs(t).exists(_.target == u);   // DocumentLattice can't handle duplicate arcs
+		     u <- remaining.slice(1, dataLevels + 1);
+		     t = remaining.head
+		     if !arcs(t).exists(_.target == u);    // DocumentLattice can't handle duplicate arcs
 		     s = tokens.slice(t, u).mkString(" ");
 		     cost = -dataCost * (u - t)
 		) {
@@ -252,7 +213,7 @@ class FrequencySegmenter(
 		     ScoredSubstring(start, end, occ, score) = substring;
 		     s = "⸬" + tokens.slice(start, end).mkString(" ");
 		     t <- occ;
-			   u = t + (end - start);
+			   u = t + (end - start)
 			   if u <= arcs.length
     ) {
 			// TODO verify arc does not cross label boundary

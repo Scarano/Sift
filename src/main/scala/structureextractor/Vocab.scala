@@ -5,7 +5,7 @@ import scala.reflect.ClassTag
 import scala.jdk.CollectionConverters._
 
 class Vocab[S](val word_map: Array[S], val id_map: Map[S, Int],
-               transform: S => S = identity[S](_))
+               transform: S => S = identity[S] _)
 {
 	val id_map_fast = new java.util.HashMap(id_map.asJava)
 	def size: Int = word_map.length
@@ -15,7 +15,7 @@ class Vocab[S](val word_map: Array[S], val id_map: Map[S, Int],
 }
 
 object Vocab {
-	def build[S: ClassTag](corpus: Iterable[S], transform: S => S = identity[S](_)): Vocab[S] = {
+	def build[S: ClassTag](corpus: Iterable[S], transform: S => S = identity[S] _): Vocab[S] = {
 		val words = Array.newBuilder[S]
 		val ids = mutable.Map.empty[S, Int]
 		var next_id = 0

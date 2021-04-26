@@ -13,10 +13,9 @@ case class PCFG(prods: Map[String, Seq[Prod]], start: String) {
 	def generateTree(rand: Random): Node = generateTree(start, rand)
 	def generateTree(sym: String, rand: Random): Node = prods.get(sym) match {
 		case None => Term(sym)
-		case Some(prodDist) => {
+		case Some(prodDist) =>
 			val prod = chooseUniform(prodDist, rand.nextDouble())
 			Nonterm(sym, prod.rhs.map { generateTree(_, rand) })
-		}
 	}
 }
 

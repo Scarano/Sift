@@ -1,7 +1,5 @@
 package structureextractor.markovlattice
 
-import java.lang.Long
-import breeze.linalg.DenseMatrix
 import com.typesafe.scalalogging.Logger
 import structureextractor.ScoredSubstring
 import structureextractor.{SubsequenceFinder, Vocab}
@@ -18,14 +16,17 @@ abstract class AArc[SYM] {
 case class Arc[SYM](sym: SYM, target: Int, cost: Double = 0.0) extends AArc[SYM]
 case class LabeledArc[SYM](sym: SYM, target: Int, cost: Double = 0.0, label: Int) extends AArc[SYM]
 
+/**
+	* Lattice (directed acyclic graph of segments of a string) representing a single document.
+	*
+	* Technically, this is not a fully general lattice, because it imposes the following restriction:
+	* For each source/destination pair (a/b above), there must be at most one arc.
+
+	* @param arcs If arcs(a)(j) == Arc(s, b) for some j, then there is an arc from node position a
+	*             to node position b that emits s.
+	* @tparam SYM The type used to represent the string segments.
+	*/
 case class DocumentLattice[SYM](arcs: Array[List[AArc[SYM]]]) {
-	/**
-		* If arcs(a)(j) == Arc(s, b) for some j, then there is an arc from node position a to node
-		* position b that emits s.
-		*
-		* NOTE: This is NOT a fully general lattice. For each source/destination pair (a/b above),
-		* there must be at most one arc.
-	 */
 
 	val numNodes = arcs.length + 1
 
@@ -61,30 +62,13 @@ case class DocumentLattice[SYM](arcs: Array[List[AArc[SYM]]]) {
 	}
 }
 
-sealed trait OccurrenceCountTree
-case class OccurrenceCountBranch(count: Int, children: Seq[OccurrenceCountTree])
-case class OccurrenceCountLeaf(location: Int)
-object OccurrenceCountTree {
-
-//	def build(stree: gstlib.InnerTree.NonRootNode): OccurrenceCountTree = stree.
-//	def apply(tokens: Seq[String]): OccurrenceCountTree = {
-//    val stree = GeneralizedSuffixTreeBuilder.empty[String, Seq[String]]()
-//
-//    stree.insert(tokens)
-//
-//		stree.root.
-//	}
-}
 
 object DocumentLattice {
 	val logger = Logger("DocumentLattice")
 
 	/**
-		* Divide label slices from [[t]] to [[u]] at label discontinuities.
-		* @param labels
-		* @param t
-		* @param u
-		* @return List of pairs [[(v, w)]] that sequentially span [[t]] to [[u]].
+		* Divide label slices from `t` to `u` at label discontinuities.
+		* @return List of pairs `(v, w)` that sequentially span `t` to `u`.
 		*/
 	def labelPartitions(labels: IndexedSeq[Option[Int]], t: Int, u: Int): List[(Int, Int)] =
 		labelPartitions(labels, t, u, t, Nil)
@@ -156,7 +140,7 @@ object DocumentLattice {
 	}
 
 	def buildVocab[SYM: ClassTag](docs: Seq[DocumentLattice[SYM]],
-	                              transform: SYM => SYM = identity[SYM](_)) : Vocab[SYM] = {
+	                              transform: SYM => SYM = identity _) : Vocab[SYM] = {
 		val syms =
 			for (doc <- docs.view;
 			     arcs <- doc.arcs;
