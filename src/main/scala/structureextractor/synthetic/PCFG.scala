@@ -1,9 +1,9 @@
-package structureextractor
+package structureextractor.synthetic
 
 import scala.annotation.tailrec
 import scala.util.Random
 
-import structureextractor.PCFG._
+import structureextractor.synthetic.PCFG._
 
 
 case class PCFG(prods: Map[String, Seq[Prod]], start: String) {

@@ -1,4 +1,4 @@
-package structureextractor
+package structureextractor.preprocessing
 
 import scala.collection.mutable
 import scala.io.Source

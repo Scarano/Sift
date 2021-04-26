@@ -2,6 +2,7 @@ package structureextractor
 
 import org.scalactic.{Equality, TolerantNumerics}
 import breeze.linalg.DenseVector
+import structureextractor.preprocessing.FrequencyScorer
 
 class FrequencyScorerTest extends org.scalatest.FunSuite {
 

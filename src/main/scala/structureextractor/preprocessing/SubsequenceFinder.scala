@@ -1,11 +1,10 @@
-package structureextractor
+package structureextractor.preprocessing
 
-import scala.jdk.CollectionConverters._
-
+import structureextractor.preprocessing.SubsequenceFinder.substringScore
 import structureextractor.rosettasuffixtree.{Node, ReversedSuffixTree, SuffixTree}
 import structureextractor.util.ResultTree
 
-import SubsequenceFinder.substringScore
+import scala.jdk.CollectionConverters._
 
 case class ScoredSubstring(start: Int, end: Int, occurrences: Seq[Int], score: Double) {
 	def toString(tokens: Seq[String]): String =

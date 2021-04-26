@@ -1,14 +1,14 @@
-package structureextractor
+package structureextractor.preprocessing
 
-import scala.io.Source
-import scala.collection.immutable.TreeMap
-import breeze.numerics.log
 import breeze.linalg.{DenseVector, sum}
+import breeze.numerics.log
 import breeze.plot
 import breeze.plot.{DomainFunction, Figure}
 import structureextractor.markovlattice.{AArc, Arc, DocumentLattice, LabeledArc}
 
+import scala.collection.immutable.TreeMap
 import scala.collection.mutable
+import scala.io.Source
 
 
 class FrequencyScorer(
@@ -56,7 +56,7 @@ class FrequencyCounter(
     val nGramSize: Int,
     val minCount: Int
 ) {
-	import structureextractor.FrequencyCounter._
+	import FrequencyCounter._
 
 	def frequencyScorer(tokens: Iterator[String]): FrequencyScorer = {
 		val (freqs, freqScores) = frequencyScores(tokens)

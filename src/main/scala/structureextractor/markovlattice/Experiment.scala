@@ -5,11 +5,11 @@ import structureextractor.util.ManagedExtension._
 
 import java.io.{File, PrintWriter}
 import java.io.FileOutputStream
-import structureextractor.{DataGenerator, FrequencySegmenter, LabeledDoc}
-
 import scala.io.Source
 import scala.util.Random
 import structureextractor.Evaluation
+import structureextractor.preprocessing.{FrequencySegmenter, LabeledDoc}
+import structureextractor.synthetic.DataGenerator
 
 object Experiment {
 	def demo(): Unit = {

@@ -1,8 +1,8 @@
 package structureextractor.markovlattice
 
 import com.typesafe.scalalogging.Logger
-import structureextractor.ScoredSubstring
-import structureextractor.{SubsequenceFinder, Vocab}
+import structureextractor.preprocessing.{ScoredSubstring, SubsequenceFinder}
+import structureextractor.Vocab
 
 import scala.annotation.tailrec
 import scala.reflect.ClassTag

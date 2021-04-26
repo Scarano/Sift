@@ -1,19 +1,17 @@
-package structureextractor
+package structureextractor.synthetic
+
+import breeze.linalg.{DenseVector, sum}
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
-import breeze.linalg.{DenseVector, sum}
+import structureextractor.preprocessing.LabeledDoc
+import structureextractor.synthetic.PCFG._
 
-import structureextractor.PCFG.Term
-
-class DataGenerator {
-
-}
 
 object DataGenerator {
 
-	private def repeat(s: String, n: Int): String = Stream.continually(s).take(n).mkString(" ")
+	private def repeat(s: String, n: Int): String = LazyList.continually(s).take(n).mkString(" ")
 
 	def simpleItems(size: Int, prefixLength: Int, descLength: Int, descVocabSize: Int)
 	: PCFG	= {

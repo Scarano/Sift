@@ -1,21 +1,25 @@
-package structureextractor
-
-import java.io.File
-
-import scala.annotation.tailrec
-import scala.io.Source
+package structureextractor.scripts
 
 import structureextractor.Util.printToFile
+
+import java.io.File
+import scala.annotation.tailrec
+import scala.io.Source
 
 object EbayTSV {
 
 	val pattern = """❲(\w+)❳❮([^❯]*)❯""".r
 
 	sealed trait Property
+
 	case class ID(value: String) extends Property
+
 	case class Name(value: String) extends Property
+
 	case class SoldOn(value: String) extends Property
+
 	case class Price(value: String) extends Property
+
 	case class TotalPrice(value: String) extends Property
 
 	def findMatches(line: String): List[Property] = pattern.findAllMatchIn(line).map({ m =>
@@ -44,9 +48,9 @@ object EbayTSV {
 			group.reverse match {
 				case TotalPrice(price) :: SoldOn(date) :: rest =>
 					Sale(price,
-						   date,
-						   rest flatMap { case ID(id) => List(id); case _ => Nil },
-						   rest flatMap { case Name(name) => List(name); case _ => Nil }
+						date,
+						rest flatMap { case ID(id) => List(id); case _ => Nil },
+						rest flatMap { case Name(name) => List(name); case _ => Nil }
 					) :: sales
 				case Nil =>
 					sales
@@ -59,7 +63,7 @@ object EbayTSV {
 			case Nil => addSale(acc, thisGroup)
 			case Name(name) :: ID(id) :: Price(price) :: SoldOn(soldOn) :: rest =>
 				process(rest,
-				        Sale(price, soldOn, List(id), List(name)) :: addSale(acc, thisGroup), List.empty)
+					Sale(price, soldOn, List(id), List(name)) :: addSale(acc, thisGroup), List.empty)
 			case TotalPrice(price) :: SoldOn(soldOn) :: rest =>
 				process(rest, addSale(acc, thisGroup), List(SoldOn(soldOn), TotalPrice(price)))
 			case Name(name) :: ID(id) :: rest =>
@@ -79,16 +83,16 @@ object EbayTSV {
 
 		val source = Source.fromFile(inputPath)
 		val matches: List[Property] = try source.getLines.flatMap(findMatches).toList
-			finally source.close
+		finally source.close
 
 		val sales = process(matches).reverse
 
 		printToFile(new File(outputPath)) { writer =>
 			for (sale <- sales) {
 				writer.println(List(sale.price, sale.date,
-				                    sale.itemIds.mkString(";"),
-				                    sale.itemNames.mkString(";")
-				               ).mkString("\t"))
+					sale.itemIds.mkString(";"),
+					sale.itemNames.mkString(";")
+				).mkString("\t"))
 			}
 		}
 	}

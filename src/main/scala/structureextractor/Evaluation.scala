@@ -1,5 +1,7 @@
 package structureextractor
 
+import structureextractor.preprocessing.LabeledDoc
+
 case class Evaluation(
   prfs: Seq[(Double, Double, Double)],
   meanPrec: Double,

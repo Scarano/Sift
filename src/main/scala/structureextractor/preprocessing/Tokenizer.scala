@@ -1,4 +1,4 @@
-package structureextractor
+package structureextractor.preprocessing
 
 import scala.util.matching.Regex
 

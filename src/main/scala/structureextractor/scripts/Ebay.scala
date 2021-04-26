@@ -1,10 +1,9 @@
-package structureextractor
-
-import java.io.File
-
-import scala.io.Source
+package structureextractor.scripts
 
 import structureextractor.Util.printToFile
+
+import java.io.File
+import scala.io.Source
 
 object Ebay {
 	val patterns = List(
