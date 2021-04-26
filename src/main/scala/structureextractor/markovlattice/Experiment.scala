@@ -41,8 +41,6 @@ object Experiment {
 	                  strategy: TrainingStrategy = FB,
 	                  maxArcLength: Int = 10,
 	                  arcPriorWeight: Double = 0.0,
-	                  flatStates: Int = 0,
-	                  flatStateBoost: Double = 0.0,
 	                  frequencyCountLattice: Boolean = false,
 	                  frequencyScoreWeight: Double = 0.5,
 	                  frequencyNGramSize: Int = 3,
@@ -111,12 +109,6 @@ object Experiment {
 			)
 			opt[Double]("arc-prior-weight").action( (x, c) =>
 				c.copy(arcPriorWeight = x)
-			)
-			opt[Int]("flat-states").action( (x, c) =>
-				c.copy(flatStates = x)
-			)
-			opt[Double]("flat-state-boost").action( (x, c) =>
-				c.copy(flatStateBoost = x)
 			)
 			opt[Unit]("frequency-count-lattice").action( (_, c) =>
 				c.copy(frequencyCountLattice = true)
@@ -326,8 +318,7 @@ object Experiment {
 			states, labelStates, vocab,
 			arcPriorWeight = config.arcPriorWeight, orderPrior = config.orderPrior)
 		val (model, lossLog) =
-			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance,
-				                 config.flatStates, config.flatStateBoost, hooks)
+			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance, hooks)
 		val viterbiCharts = docs.map(model.viterbiChart)
 
 		println(s"\nIterations: ${lossLog.size}")

@@ -167,8 +167,7 @@ class StructuredDocumentModel[SYM](
 		* using forward-backward algorithm.
 		* @return tuple (new model, mean log likelihood)
 		*/
-	def reestimate(docs: Seq[DocumentLattice[SYM]],
-	               flatStates: Int = 0, flatStateBoost: Double = 0.0)
+	def reestimate(docs: Seq[DocumentLattice[SYM]])
 	: (StructuredDocumentModel[SYM], Double) = {
 
 		var numDocs = 0
@@ -228,18 +227,20 @@ class StructuredDocumentModel[SYM](
 				//  sum after the loop.
 				transObs := softmax(transObs, ξ_tu)
 
-				// Old version: The emission expectation is the probability of being in state i
-				// times the probability of being emitted from state i. The problem is that this doesn't
-				// favor long arcs when they're part of cheaper overall paths.
-//				val arcObs = γ(t, ::).t + emitCost(::, vocab(arc.sym))
-
 				// Marginalize over destination states j to get total expected observations of this arc
 				// at position t and state i.
+
 				val arcObs = softmax(ξ_tu, Axis._1)
 
-				// penalize long arcs
-//				arcObs :-= DenseVector.fill(arcObs.length) { arcPriorWeight * (u - t) }
+				// Note: That's different from textbook forward-backward! Because this is a *lattice*
+				// of observations (not a sequence, like a normal HMM), we can't just use the
+				// usual γ(t) + emitCost, which assumes that all paths go through t. (I naively coded it
+				// that way originally, and I noticed that it failed to properly favor long arcs when
+				// they're part of cheaper overall paths.)
 
+				// TODO: I suspect there's a simpler way to compute the same quantity.
+
+				// penalize long arcs
 				emitObs(::, vocab(arc.sym)) := softmax(emitObs(::, vocab(arc.sym)), arcObs)
 			}
 		}
@@ -258,23 +259,6 @@ class StructuredDocumentModel[SYM](
 
 		val meanDocEntropy = -sumLogPdoc / numDocs
 //		println(s"Mean doc entropy = $meanDocEntropy")
-
-		// TODO: replace for loop with matrix slices
-		val boost = DenseVector.fill(transObs.rows) { log(flatStateBoost * numNodes / flatStates) }
-		val emitSmoother = DenseVector.fill(emitObs.cols) { log(vocab.size.toDouble) }
-		for (i <- 0 until flatStates) {
-			// Artificially favor "flattened" states
-			transObs(::, i) := softmax(transObs(::, i), boost)
-	//		println(transObs)
-
-			// Artificially flatten those states' emission distributions.
-			val oldState0Sum = softmax(emitObs(0, ::))
-			emitObs(0, ::) := softmax(emitObs(0, ::), emitSmoother.t)
-			emitObs(0, ::) += oldState0Sum - softmax(emitObs(0, ::)) // TODO: is this the formula I want?
-			for (w <- 0 until vocab.size)
-				emitObs(0, w) -= 1.0 * (vocab(w).toString.count(_ == ' ') + 0)
-	//		println(emitObs)
-		}
 
 		transMask.foreach(transObs += _)
 
@@ -304,13 +288,11 @@ class StructuredDocumentModel[SYM](
 		strategy: TrainingStrategy = FB,
 		maxEpochs: Int = 99,
 		tol: Double = 1e-5,
-		flatStates: Int = 0,
-		flatStateBoost: Double = 0.0,
 		hooks: Seq[StructuredDocumentModel[SYM] => Unit] = Nil,
 		prevCrossentropies: List[Double] = List.empty[Double]
   ): (StructuredDocumentModel[SYM], List[Double]) = {
 		val (newModel, meanCrossentropy) = strategy match {
-			case FB | FBThenViterbi => reestimate(docs, flatStates, flatStateBoost)
+			case FB | FBThenViterbi => reestimate(docs)
 			case Viterbi => reestimateViterbi(docs)
 		}
 		hooks.foreach(_(this))
@@ -321,20 +303,14 @@ class StructuredDocumentModel[SYM](
 			case prevEntropy :: _ =>
 				if (abs(1 - prevEntropy / meanCrossentropy) < tol) {
 					if (strategy == FBThenViterbi)
-						newModel.train(docs, Viterbi, maxEpochs - 1, tol,
-						               flatStates, flatStateBoost, hooks,
-						               newCrossentropyList)
+						newModel.train(docs, Viterbi, maxEpochs - 1, tol, hooks, newCrossentropyList)
 					else
 						(newModel, newCrossentropyList)
 				}
 				else {
-					newModel.train(docs, strategy, maxEpochs - 1, tol,
-					               flatStates, flatStateBoost, hooks,
-					               newCrossentropyList)
+					newModel.train(docs, strategy, maxEpochs - 1, tol, hooks, newCrossentropyList)
 				}
-			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol,
-			                         flatStates, flatStateBoost, hooks,
-			                         newCrossentropyList)
+			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol, hooks, newCrossentropyList)
 		}
 	}
 
