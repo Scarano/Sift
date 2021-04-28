@@ -1,7 +1,7 @@
 package structureextractor.markovlattice
 
 import scala.annotation.tailrec
-import scala.collection.mutable
+import scala.collection.{SeqMap, mutable}
 import breeze.linalg._
 import breeze.numerics._
 import breeze.stats.distributions.{Rand, RandBasis}
@@ -188,7 +188,7 @@ class StructuredDocumentModel[SYM](
 //			println(s"β = \n$β")
 //			println(s"α * β = \n${α + β}")
 //			println(s"γ = \n$γ")
-			println(s"log P(doc) = $logPdoc")
+//			println(s"log P(doc) = $logPdoc")
 
 			numDocs += 1
 			numNodes += doc.numNodes
@@ -285,32 +285,41 @@ class StructuredDocumentModel[SYM](
 	@tailrec
 	final def train(
 		docs: Seq[DocumentLattice[SYM]],
-		strategy: TrainingStrategy = FB,
 		maxEpochs: Int = 99,
-		tol: Double = 1e-5,
-		hooks: Seq[StructuredDocumentModel[SYM] => Unit] = Nil,
-		prevCrossentropies: List[Double] = List.empty[Double]
-  ): (StructuredDocumentModel[SYM], List[Double]) = {
-		val (newModel, meanCrossentropy) = strategy match {
+		tol: Double = 1e-6,
+		hooks: Seq[(TrainingState[SYM], StructuredDocumentModel[SYM]) => TrainingState[SYM]],
+		state: TrainingState[SYM] = TrainingState()
+  ): (StructuredDocumentModel[SYM], TrainingState[SYM]) = {
+		val (newModel, loss) = state.strategy match {
 			case FB | FBThenViterbi => reestimate(docs)
 			case Viterbi => reestimateViterbi(docs)
 		}
-		hooks.foreach(_(this))
-		val newCrossentropyList = meanCrossentropy :: prevCrossentropies
-		if (maxEpochs == 1)
-			return (newModel, newCrossentropyList)
-		prevCrossentropies match {
-			case prevEntropy :: _ =>
-				if (abs(1 - prevEntropy / meanCrossentropy) < tol) {
-					if (strategy == FBThenViterbi)
-						newModel.train(docs, Viterbi, maxEpochs - 1, tol, hooks, newCrossentropyList)
+		val updatedState = state.copy(
+			epoch = state.epoch+1,
+			prevLosses = loss::state.prevLosses,
+			metrics = SeqMap.empty
+		)
+
+		val newState = hooks.foldLeft(updatedState) { (state, hook) => hook(state, this) }
+
+		if (state.epoch == maxEpochs)
+			return (newModel, newState)
+		newState.prevLosses match {
+			case _ :: prevLoss :: _ =>
+				val improvement = prevLoss / loss - 1
+				println(f"[epoch ${newState.epoch}] loss: $loss%.3f ($improvement%.3e); " +
+				        newState.metricsString)
+				if (abs(improvement) < tol) {
+					if (newState.strategy == FBThenViterbi)
+						newModel.train(docs, maxEpochs, tol, hooks, newState.copy(strategy=Viterbi))
 					else
-						(newModel, newCrossentropyList)
+						(newModel, newState)
 				}
 				else {
-					newModel.train(docs, strategy, maxEpochs - 1, tol, hooks, newCrossentropyList)
+					newModel.train(docs, maxEpochs, tol, hooks, newState)
 				}
-			case _ => newModel.train(docs, strategy, maxEpochs - 1, tol, hooks, newCrossentropyList)
+			case _ =>
+				newModel.train(docs, maxEpochs, tol, hooks, newState)
 		}
 	}
 

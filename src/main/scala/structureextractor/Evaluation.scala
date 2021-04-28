@@ -2,12 +2,21 @@ package structureextractor
 
 import structureextractor.preprocessing.LabeledDoc
 
+import scala.collection.SeqMap
+
 case class Evaluation(
   prfs: Seq[(Double, Double, Double)],
   meanPrec: Double,
   meanRec: Double,
   meanFscore: Double
-)
+) {
+	def asMap: SeqMap[String, Double] =
+		SeqMap(
+			"meanFscore" -> meanFscore,
+			"meanPrec" -> meanPrec,
+			"meanRec" -> meanRec,
+		)
+}
 
 object Evaluation {
   def apply(testDoc: LabeledDoc, predLabels: Seq[Option[Int]]): Evaluation = {

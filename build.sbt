@@ -1,3 +1,5 @@
+import com.typesafe.sbt.packager.Keys.{dockerEntrypoint, dockerBaseImage}
+
 name := "Sift"
 
 version := "0.1"
@@ -69,3 +71,8 @@ fork in run := true
 
 
 enablePlugins(JavaAppPackaging)
+
+enablePlugins(DockerPlugin)
+dockerEntrypoint := Seq()
+//dockerEntrypoint := Seq("/opt/docker/bin/experiment")
+//dockerBaseImage := "openjdk:jre"

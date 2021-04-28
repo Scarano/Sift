@@ -1,14 +1,15 @@
 package structureextractor.preprocessing
 
+import scala.collection.immutable.TreeMap
+import scala.collection.mutable
+import scala.io.Source
+
 import breeze.linalg.{DenseVector, sum}
 import breeze.numerics.log
 import breeze.plot
 import breeze.plot.{DomainFunction, Figure}
-import structureextractor.markovlattice.{AArc, Arc, DocumentLattice, LabeledArc}
 
-import scala.collection.immutable.TreeMap
-import scala.collection.mutable
-import scala.io.Source
+import structureextractor.markovlattice.{AArc, Arc, DocumentLattice, LabeledArc}
 
 
 class FrequencyScorer(
@@ -95,7 +96,7 @@ object FrequencyCounter {
 	def countNGrams(tokens: Iterator[String], n: Int): Map[Seq[String], Int] = {
 		val nGrams = tokens.sliding(n, 1)
 		nGrams.foldLeft(Map.empty[Seq[String], Int]) { (c, w) =>
-			c + (w -> (c.getOrElse(w, 0) + 1))
+				c + (w -> (c.getOrElse(w, 0) + 1))
 		}
 	}
 }

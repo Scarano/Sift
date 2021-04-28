@@ -1,15 +1,16 @@
 package structureextractor.markovlattice
 
-import structureextractor.util.Managed
-import structureextractor.util.ManagedExtension._
-
 import java.io.{File, PrintWriter}
 import java.io.FileOutputStream
 import scala.io.Source
 import scala.util.Random
+
+import structureextractor.util.Managed
+import structureextractor.util.ManagedExtension._
 import structureextractor.Evaluation
 import structureextractor.preprocessing.{FrequencySegmenter, LabeledDoc}
 import structureextractor.synthetic.DataGenerator
+
 
 object Experiment {
 	def demo(): Unit = {
@@ -221,16 +222,19 @@ object Experiment {
 				DocumentLattice.fromTokens(trainingDoc.tokens, config.maxArcLength, trainingDoc.labels)
 			}
 
-		val trainCallbacks = List({ model: StructuredDocumentModel[String] =>
-			val chart = model.viterbiChart(doc)
-			val predLabels = chartLabeling(testDoc, chart)
-			val eval = Evaluation(testDoc, predLabels)
-
-			println(
-				List(eval.meanFscore, eval.meanPrec, eval.meanRec)
-					.map(_.formatted("%.5f"))
-					.mkString("\t"))
-		})
+		val trainHooks = List(
+			{ (state: TrainingState[String], model: StructuredDocumentModel[String]) =>
+				if (state.epoch % 5 == 0) {
+					val chart = model.viterbiChart(doc)
+					val predLabels = chartLabeling(testDoc, chart)
+					val eval = Evaluation(testDoc, predLabels)
+					state.copy(metrics = state.metrics ++ eval.asMap)
+				}
+				else {
+					state
+				}
+			}
+		)
 
 		val logFile = config.outputFile.getOrElse(new File("/dev/null"))
 		val logWriter = new PrintWriter(logFile)
@@ -243,7 +247,7 @@ object Experiment {
 
 			val docs = List(doc)
 
-			val (model, charts) = runExperiment(config, config.states, numLabels, docs, log, trainCallbacks)
+			val (model, charts) = runExperiment(config, config.states, numLabels, docs, log, trainHooks)
 			var finalCharts = charts
 
 			config.pathOutputFile.foreach { f =>
@@ -256,7 +260,7 @@ object Experiment {
 			config.rerunStates.foreach { n =>
 				val filteredDocs = charts.map { _.filterArcs() }
 				val (model2, charts2) = runExperiment(
-					config, n, numLabels, filteredDocs, log, trainCallbacks)
+					config, n, numLabels, filteredDocs, log, trainHooks)
 
 				config.pathOutputFile.foreach { f =>
 					Managed(new PrintWriter(new FileOutputStream(f, true))) { writer =>
@@ -273,7 +277,7 @@ object Experiment {
 				Managed(new PrintWriter(tsvFile)) { tsvWriter => 
 					for {
 						chart <- finalCharts
-					  record <- chart.filteredRecords
+						record <- chart.filteredRecords
 					} {
 						val sanitized = record map { fieldValues => 
 							fieldValues.map(_.sym).mkString(";").replace("\t", " ")
@@ -302,7 +306,7 @@ object Experiment {
 		labelStates: Int,
 		docs: Seq[DocumentLattice[String]],
 		log: PrintWriter,
-		hooks: Seq[StructuredDocumentModel[String] => Unit]
+		hooks: Seq[(TrainingState[String], StructuredDocumentModel[String]) => TrainingState[String]]
 	): (StructuredDocumentModel[String], Seq[ViterbiChart[String]]) = {
 
 		// TODO get rid of this hack after switching from String to a more general symbol class
@@ -317,16 +321,18 @@ object Experiment {
 		val initialModel = StructuredDocumentModel.randomInitial(
 			states, labelStates, vocab,
 			arcPriorWeight = config.arcPriorWeight, orderPrior = config.orderPrior)
-		val (model, lossLog) =
-			initialModel.train(docs, config.strategy, config.maxEpochs, config.tolerance, hooks)
+		val initialState = TrainingState[String](strategy=config.strategy)
+		val (model, trainState) =
+			initialModel.train(docs, config.maxEpochs, config.tolerance, hooks, initialState)
+		val lossLog = trainState.prevLosses.reverse
 		val viterbiCharts = docs.map(model.viterbiChart)
 
-		println(s"\nIterations: ${lossLog.size}")
-		println(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" "))
+		println(s"\nIterations: ${trainState.epoch}")
+		println(s"Loss log: " + lossLog.map(_.formatted("%.1f")).mkString(" "))
 
 		log.write(s"\nfinal model:\n$model\n")
-		log.write(s"Iterations: ${lossLog.size}\n")
-		log.write(s"Loss log: " + lossLog.reverse.map(_.formatted("%.1f")).mkString(" ") + "\n")
+		log.write(s"Iterations: ${trainState.epoch}\n")
+		log.write(s"Loss log: " + lossLog.map(_.formatted("%.1f")).mkString(" ") + "\n")
 
 		for (viterbiChart <- viterbiCharts.headOption) {
 			println(viterbiChart.pathInfo(40, 80))
