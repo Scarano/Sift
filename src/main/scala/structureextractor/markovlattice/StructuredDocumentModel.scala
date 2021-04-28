@@ -287,20 +287,21 @@ class StructuredDocumentModel[SYM](
 		docs: Seq[DocumentLattice[SYM]],
 		maxEpochs: Int = 99,
 		tol: Double = 1e-6,
-		hooks: Seq[(TrainingState[SYM], StructuredDocumentModel[SYM]) => TrainingState[SYM]],
-		state: TrainingState[SYM] = TrainingState()
+		hooks: Seq[TrainingState[SYM] => TrainingState[SYM]],
+		state: TrainingState[SYM] = TrainingState(model = this)
   ): (StructuredDocumentModel[SYM], TrainingState[SYM]) = {
 		val (newModel, loss) = state.strategy match {
 			case FB | FBThenViterbi => reestimate(docs)
 			case Viterbi => reestimateViterbi(docs)
 		}
 		val updatedState = state.copy(
+			model = newModel,
 			epoch = state.epoch+1,
 			prevLosses = loss::state.prevLosses,
 			metrics = SeqMap.empty
 		)
 
-		val newState = hooks.foldLeft(updatedState) { (state, hook) => hook(state, this) }
+		val newState = hooks.foldLeft(updatedState) { (state, hook) => hook(state) }
 
 		if (state.epoch == maxEpochs)
 			return (newModel, newState)

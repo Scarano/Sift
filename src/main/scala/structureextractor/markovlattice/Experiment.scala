@@ -35,6 +35,7 @@ object Experiment {
 	                  outputFile: Option[File] = None,
 	                  pathOutputFile: Option[File] = None,
 	                  tsvOutputFile: Option[File] = None,
+	                  rawTsvOutputFile: Option[File] = None,
 	                  generateSimple: Seq[Int] = Seq(),
 	                  generateMulti: Seq[Int] = Seq(),
 	                  states: Int = 5,
@@ -82,6 +83,9 @@ object Experiment {
 			)
 			opt[File]("tsv-file").action( (x, c) =>
 				c.copy(tsvOutputFile = Some(x))
+			)
+			opt[File]("raw-tsv-file").action( (x, c) =>
+				c.copy(rawTsvOutputFile = Some(x))
 			)
 			opt[Seq[Int]]("generate-simple").action( (x, c) =>
 				c.copy(generateSimple = x)
@@ -222,19 +226,36 @@ object Experiment {
 				DocumentLattice.fromTokens(trainingDoc.tokens, config.maxArcLength, trainingDoc.labels)
 			}
 
-		val trainHooks = List(
-			{ (state: TrainingState[String], model: StructuredDocumentModel[String]) =>
-				if (state.epoch % 5 == 0) {
-					val chart = model.viterbiChart(doc)
-					val predLabels = chartLabeling(testDoc, chart)
-					val eval = Evaluation(testDoc, predLabels)
-					state.copy(metrics = state.metrics ++ eval.asMap)
+		val tsvHook = config.rawTsvOutputFile.map { tsvFile =>
+			{ state: TrainingState[String] =>
+				Managed(new PrintWriter(tsvFile)) { tsvWriter =>
+					for {
+						chart <- state.viterbiCharts
+						record <- chart.records
+					} {
+						val sanitized = record map { fieldValues =>
+							fieldValues.map(_.sym).mkString(";").replace("\t", " ")
+						}
+						tsvWriter.print(sanitized.mkString("", "\t", "\n"))
+					}
 				}
-				else {
-					state
-				}
+				state
 			}
-		)
+		}
+
+		val prfHook = { state: TrainingState[String] =>
+			if (state.epoch % 5 == 0) {
+				val chart = state.model.viterbiChart(doc)
+				val predLabels = chartLabeling(testDoc, chart)
+				val eval = Evaluation(testDoc, predLabels)
+				state.copy(metrics = state.metrics ++ eval.asMap)
+			}
+			else {
+				state
+			}
+		}
+
+		val trainHooks = List(Some(prfHook), tsvHook).flatten
 
 		val logFile = config.outputFile.getOrElse(new File("/dev/null"))
 		val logWriter = new PrintWriter(logFile)
@@ -306,7 +327,7 @@ object Experiment {
 		labelStates: Int,
 		docs: Seq[DocumentLattice[String]],
 		log: PrintWriter,
-		hooks: Seq[(TrainingState[String], StructuredDocumentModel[String]) => TrainingState[String]]
+		hooks: Seq[TrainingState[String] => TrainingState[String]]
 	): (StructuredDocumentModel[String], Seq[ViterbiChart[String]]) = {
 
 		// TODO get rid of this hack after switching from String to a more general symbol class
@@ -321,7 +342,9 @@ object Experiment {
 		val initialModel = StructuredDocumentModel.randomInitial(
 			states, labelStates, vocab,
 			arcPriorWeight = config.arcPriorWeight, orderPrior = config.orderPrior)
-		val initialState = TrainingState[String](strategy=config.strategy)
+		val initialState = TrainingState[String](docs = docs,
+																						 model = initialModel,
+																						 strategy = config.strategy)
 		val (model, trainState) =
 			initialModel.train(docs, config.maxEpochs, config.tolerance, hooks, initialState)
 		val lossLog = trainState.prevLosses.reverse
