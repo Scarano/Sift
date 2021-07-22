@@ -167,7 +167,7 @@ class StructuredDocumentModel[SYM](
 		* using forward-backward algorithm.
 		* @return tuple (new model, mean log likelihood)
 		*/
-	def reestimate(docs: Seq[DocumentLattice[SYM]])
+	def reestimate(docs: Seq[DocumentLattice[SYM]], temperature: Double)
 	: (StructuredDocumentModel[SYM], Double) = {
 
 		var numDocs = 0
@@ -245,10 +245,10 @@ class StructuredDocumentModel[SYM](
 			}
 		}
 
-		// Hallucinate some observations and transitions to prevent numerical underflow
-		// TODO make this a parameter?
-		emitObs := softmax(emitObs, DenseMatrix.fill(emitObs.rows, emitObs.cols) {-100.0})
-		transObs := softmax(transObs, DenseMatrix.fill(transObs.rows, transObs.cols) {-100.0})
+		// Apply "temperature" by hallucinating some observations and transitions.
+		// There should always be at least some nonzero temperature to prevent numerical underflow.
+		emitObs := softmax(emitObs, DenseMatrix.fill(emitObs.rows, emitObs.cols) {temperature})
+		transObs := softmax(transObs, DenseMatrix.fill(transObs.rows, transObs.cols) {temperature})
 
 //		println("emitObs = \n" +
 //			(0 until emitObs.cols).map(v => {
@@ -291,7 +291,7 @@ class StructuredDocumentModel[SYM](
 		state: TrainingState[SYM] = TrainingState(model = this)
   ): (StructuredDocumentModel[SYM], TrainingState[SYM]) = {
 		val (newModel, loss) = state.strategy match {
-			case FB | FBThenViterbi => reestimate(docs)
+			case FB | FBThenViterbi => reestimate(docs, state.temperature)
 			case Viterbi => reestimateViterbi(docs)
 		}
 		val updatedState = state.copy(

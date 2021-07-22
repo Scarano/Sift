@@ -1,10 +1,11 @@
 package structureextractor.markovlattice
 
+import breeze.linalg.max
+
 import java.io.{File, PrintWriter}
 import java.io.FileOutputStream
 import scala.io.Source
 import scala.util.Random
-
 import structureextractor.util.Managed
 import structureextractor.util.ManagedExtension._
 import structureextractor.Evaluation
@@ -58,6 +59,8 @@ object Experiment {
 	                  alpha: Double = 1.0,
 	                  orderPrior: Option[Double] = None,
 	                  labelCoverage: Double = 0.0,
+	                  initialTemperature: Double = -100.0,
+	                  temperatureDecrement: Option[Double] = None,
 	                  tolerance: Double = 1e-4,
 	                  maxEpochs: Int = 99,
 	                  truncate: Option[Int] = None,
@@ -160,6 +163,12 @@ object Experiment {
 			opt[Double]("label-coverage").action( (x, c) =>
 				c.copy(labelCoverage = x)
 			)
+			opt[Double]("initial-temp").action( (x, c) =>
+				c.copy(initialTemperature = x)
+			)
+			opt[Double]("temp-dec").action( (x, c) =>
+				c.copy(temperatureDecrement = Some(x))
+			)
 			opt[Double]("tolerance").action( (x, c) =>
 				c.copy(tolerance = x)
 			)
@@ -255,7 +264,13 @@ object Experiment {
 			}
 		}
 
-		val trainHooks = List(Some(prfHook), tsvHook).flatten
+		val temperatureHook = config.temperatureDecrement.map { decrement =>
+			{ state: TrainingState[String] =>
+				state.copy(temperature = max(state.temperature - decrement, -100.0))
+			}
+		}
+
+		val trainHooks = List(Some(prfHook), tsvHook, temperatureHook).flatten
 
 		val logFile = config.outputFile.getOrElse(new File("/dev/null"))
 		val logWriter = new PrintWriter(logFile)
@@ -344,7 +359,8 @@ object Experiment {
 			arcPriorWeight = config.arcPriorWeight, orderPrior = config.orderPrior)
 		val initialState = TrainingState[String](docs = docs,
 																						 model = initialModel,
-																						 strategy = config.strategy)
+																						 strategy = config.strategy,
+																						 temperature = config.initialTemperature)
 		val (model, trainState) =
 			initialModel.train(docs, config.maxEpochs, config.tolerance, hooks, initialState)
 		val lossLog = trainState.prevLosses.reverse
