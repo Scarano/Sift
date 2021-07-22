@@ -18,10 +18,9 @@ class FrequencyScorer(
 ) {
 	val freqMap: TreeMap[Int, Int] = TreeMap.from(freqs.iterator.map { case (i, freq) => (freq, i) })
 
-	def apply(freq: Int): Double = freqMap.get(freq) match {
-		case Some(i) => freqCounts(i)
-		case None => 1e-9
-	}
+	def apply(freq: Int): Double = freqMap.get(freq)
+	                                      .map(freqCounts(_))
+	                                      .getOrElse(1e-9)
 
 	def interpolatedScore(freq: Int): Double = freqMap.minAfter(freq) match {
 		case Some((hiFreq, j)) =>
@@ -138,7 +137,7 @@ class FrequencySegmenter(
 		for (ss <- substrings.sortBy(-_.score))
 			println(f"${ss.score}%.2f " + (ss.start until ss.end).map(tokens(_)).mkString(" "))
 
-		val vertices = mutable.TreeSet.empty[Int]
+		val vertices = mutable.TreeSet(0, arcs.length)
 
 		for (substring <- substrings;
 		     ScoredSubstring(start, end, occ, score) = substring;

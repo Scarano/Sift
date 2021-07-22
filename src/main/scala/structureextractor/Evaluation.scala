@@ -38,7 +38,7 @@ object Evaluation {
 		var tp = 0.0
 		var fp = 0.0
 		var fn = 0.0
-		(refLabels zip predLabels).foreach {
+		refLabels zip predLabels foreach {
 			case (Some(y), Some(y_pred)) if y == testLabel && y_pred == testLabel =>
 				tp += 1.0
 			case (Some(y), _) if y == testLabel =>
