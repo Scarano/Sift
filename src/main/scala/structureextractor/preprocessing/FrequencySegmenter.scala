@@ -135,7 +135,8 @@ class FrequencySegmenter(
 
 		println()
 		for (ss <- substrings.sortBy(-_.score))
-			println(f"${ss.score}%.2f " + (ss.start until ss.end).map(tokens(_)).mkString(" "))
+			println(f"[${ss.occurrences.size} occ's from ${ss.start}; ${ss.score}%.2f] "
+				        + (ss.start until ss.end).map(tokens(_)).mkString(" "))
 
 		val vertices = mutable.TreeSet(0, arcs.length)
 

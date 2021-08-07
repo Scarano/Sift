@@ -4,12 +4,12 @@ import java.io.Closeable
 import scala.language.implicitConversions
 
 /**
- * This is provides the `use` extension method to [[Closeable]]s (e.g., `FileWriter`s).
- * 
- * `use` invokes the provided function on the [[Closeable]], and then `close()` it, so that
- * the known lifetime of the [[Closeable]] is clearly visible, with no possibility of forgetting to
- * close it in some abstruse circumstance.
- */
+  * This is provides the `use` extension method to [[java.io.Closeable]]s (e.g., `FileWriter`s).
+  *
+  * `use` invokes the provided function on the [[java.io.Closeable]], and then `close()` it, so
+	* that the known lifetime of the [[java.io.Closeable]] is clearly visible, with no possibility
+	* of forgetting to close it in some abstruse circumstance.
+  */
 class ManagedExtension[A <: Closeable](resource: A) {
 	var used = false
 

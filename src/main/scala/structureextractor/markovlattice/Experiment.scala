@@ -253,7 +253,7 @@ object Experiment {
 		}
 
 		val prfHook = { state: TrainingState[String] =>
-			if (state.epoch % 5 == 0) {
+			if (state.epoch % 1 == 0) {
 				val chart = state.model.viterbiChart(doc)
 				val predLabels = chartLabeling(testDoc, chart)
 				val eval = Evaluation(testDoc, predLabels)
@@ -393,7 +393,7 @@ object Experiment {
 	 * state), determine which label each column (state) is likely to map to.
 	 * 
 	 * @return Vector `mapping` in which `mapping(state)` is either `Some(labelNumber)`
-	 *   or [[None]] if no appropriate mapping was found for `state`.
+	 *   or `None` if no appropriate mapping was found for `state`.
 	 */
 	def mapColumnsToLabels[SYM](doc: LabeledDoc, records: List[Vector[List[Span[SYM]]]])
 	: Vector[Option[Int]] = {
@@ -411,8 +411,10 @@ object Experiment {
 				val labelCounts = labels.foldLeft(Vector.fill[Int](numLabels)(0)) { (counter, l) =>
 					counter.updated(l, counter(l) + 1)
 				}
-				// Only map to a label that accounts for a majority of the spans in this column.
-				labelCounts.zipWithIndex.find(_._1 > numSpans / 2).map(_._2)
+				// Find labels that map to at least a few span in this column
+				val topLabelCounts = labelCounts.zipWithIndex.filter(_._1 > 0.1 * numSpans)
+				// Among those, find most commonly used label, if any
+				topLabelCounts.maxByOption(_._1).map(_._2)
 			}
 		mapping.toVector
 	}
