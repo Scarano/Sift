@@ -77,7 +77,8 @@ class StructuredDocumentModel[SYM](
 		     u = arc.target;
 		     u_label = if (u < doc.labels.length) doc.labels(u) else null;
 		     j <- 0 until numStates
-    ) {
+				 if transMask.forall(_(i, j) > Double.NegativeInfinity)
+		) {
 //			val transCost_ij = arc match {
 //				// If it's a labeled arc and the label is wrong OR the arc has the special -1
 //				// ("do not label") label and the state is a valid label state...
@@ -136,6 +137,7 @@ class StructuredDocumentModel[SYM](
 		     i <- 0 until numStates;
 		     u = arc.target;
 		     j <- 0 until numStates
+				 if transMask.forall(_(i, j) > Double.NegativeInfinity)
     ) {
 			val transCost_ij = arc match {
 				// If it's a labeled arc and the label is wrong OR the arc has the special -1
@@ -202,22 +204,24 @@ class StructuredDocumentModel[SYM](
 			{
 
 				// ξ(t, u, i, j) = Pr(arc(t/i -> u/j) | doc, labels)
-				val ξ_tu = DenseMatrix.tabulate(numStates, numStates) { case (i, j) =>
-					// TODO - remove redundant computation
-					val transCost_ij = arc match {
-						// If it's a labeled arc and the label is wrong OR the arc has the special -1
-						// ("do not label") label and the state is a valid label state...
-						case LabeledArc(_, _, _, label) if label != -1 && label != i
-						                                   || label == -1 && i < labelStates =>
-							// ... then penalize arc (don't observe, effectively) for violating the labeling.
-							Double.NegativeInfinity
-						case LabeledArc(_, _, _, _) =>
-							transCost(i, j)
-						case _ =>
-							transCost(i, j)
-					}
-					val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
-					α(t, i) + transCost_ij + arcCost + β(u, j) - logPdoc
+				val ξ_tu = DenseMatrix.tabulate(numStates, numStates) {
+					case (i, j) if transMask.forall(_(i, j) > Double.NegativeInfinity) =>
+						// TODO - remove redundant computation
+						val transCost_ij = arc match {
+							// If it's a labeled arc and the label is wrong OR the arc has the special -1
+							// ("do not label") label and the state is a valid label state...
+							case LabeledArc(_, _, _, label) if label != -1 && label != i
+							                                   || label == -1 && i < labelStates =>
+								// ... then penalize arc (don't observe, effectively) for violating the labeling.
+								Double.NegativeInfinity
+							case LabeledArc(_, _, _, _) =>
+								transCost(i, j)
+							case _ =>
+								transCost(i, j)
+						}
+						val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
+						α(t, i) + transCost_ij + arcCost + β(u, j) - logPdoc
+					case _ => Double.NegativeInfinity
 				}
 //				println(s"ξ($t, $u) = \n$ξ_tu")
 //				println(s"exp ξ($t, $u) = \n${exp(ξ_tu)}")
@@ -369,20 +373,20 @@ class StructuredDocumentModel[SYM](
 		val bestPrevState = DenseMatrix.zeros[Int](doc.numNodes, numStates)
 		val bestCost = DenseMatrix.fill[Double](doc.numNodes, numStates) {Double.NegativeInfinity}
 		bestCost(0, ::) := initCost.t
-		for (node1 <- doc.nonfinalNodes;
-		     state1 <- 0 until numStates;
-		     arc <- doc.arcs(node1);
-		     arcCost = emitCost(state1, vocab(arc.sym)) + arcPriorWeight * arc.cost;
-		     startCost = bestCost(node1, state1) + arcCost;
-		     node2 = arc.target;
-		     state2 <- 0 until numStates)
+		for (t <- doc.nonfinalNodes;
+		     i <- 0 until numStates;
+		     arc <- doc.arcs(t);
+		     arcCost = emitCost(i, vocab(arc.sym)) + arcPriorWeight * arc.cost;
+		     startCost = bestCost(t, i) + arcCost;
+		     u = arc.target;
+		     j <- 0 until numStates)
 		{
 //			println(s"$node1 $state1 -> $node2 $state2; $arcCost [${arc.sym}]")
-			val cost = startCost + transCost(state1, state2)
-			if (cost > bestCost(node2, state2)) {
-				bestCost(node2, state2) = cost
-				bestPrevState(node2, state2) = state1
-				bestPrevNode(node2, state2) = node1
+			val cost = startCost + transCost(i, j)
+			if (cost > bestCost(u, j)) {
+				bestCost(u, j) = cost
+				bestPrevState(u, j) = i
+				bestPrevNode(u, j) = t
 			}
 		}
 
@@ -478,7 +482,8 @@ object StructuredDocumentModel {
 		uniformDistRows(1, size)(0, ::).t
 
 	def randomInitial[SYM](numStates: Int, labelStates: Int, vocab: Vocab[SYM], seed: Int = 123,
-	                       arcPriorWeight: Double = 0.0, orderPrior: Option[Double] = None)
+	                       arcPriorWeight: Double = 0.0, orderPrior: Option[Double] = None,
+	                       maskCutoff: Double = 1.0)
 	: StructuredDocumentModel[SYM] = {
 		val randBasis = RandBasis.withSeed(seed)
 //		val p_init = if (numStates == 1) DenseVector(1.0)
@@ -490,11 +495,14 @@ object StructuredDocumentModel {
 		val p_emit = randomDistRows(numStates, vocab.size, randBasis.uniform) * 0.1 + 0.9/vocab.size
 
 		val transMask = orderPrior.map { x =>
-			DenseMatrix.tabulate(numStates, numStates) {
+			val rawMask = DenseMatrix.tabulate(numStates, numStates) {
 //					(i, j) => if (i == j || (i + 1) % numStates == j) 0.0 else -100.0
 					case (i, j) => -x/numStates * math.floorMod(j - i - 1, numStates).toDouble
 //					(i, j) => if (i == j || i + 1 == j || j == 0) 0.0 else -100.0
 			}
+			val maskValues = rawMask(0, ::).t.toArray.sorted.reverse
+			val threshold = maskValues((maskCutoff*numStates - 1e-7).toInt)
+			rawMask.map(m => if (m < threshold) Double.NegativeInfinity else m)
 		}
 
 		transMask.foreach(p_trans *= exp(_))

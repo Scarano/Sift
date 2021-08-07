@@ -58,6 +58,7 @@ object Experiment {
 	                  arcScoreThreshold: Double = 0.2,
 	                  alpha: Double = 1.0,
 	                  orderPrior: Option[Double] = None,
+	                  maskCutoff: Double = 1.0,
 	                  labelCoverage: Double = 0.0,
 	                  initialTemperature: Double = -100.0,
 	                  temperatureDecrement: Option[Double] = None,
@@ -159,6 +160,9 @@ object Experiment {
 			)
 			opt[Double]("order-prior").action( (x, c) =>
 				c.copy(orderPrior = Some(x))
+			)
+			opt[Double]("mask-cutoff").action( (x, c) =>
+				c.copy(maskCutoff = x)
 			)
 			opt[Double]("label-coverage").action( (x, c) =>
 				c.copy(labelCoverage = x)
@@ -356,7 +360,8 @@ object Experiment {
 
 		val initialModel = StructuredDocumentModel.randomInitial(
 			states, labelStates, vocab,
-			arcPriorWeight = config.arcPriorWeight, orderPrior = config.orderPrior)
+			arcPriorWeight = config.arcPriorWeight, orderPrior = config.orderPrior,
+			maskCutoff = config.maskCutoff)
 		val initialState = TrainingState[String](docs = docs,
 																						 model = initialModel,
 																						 strategy = config.strategy,
