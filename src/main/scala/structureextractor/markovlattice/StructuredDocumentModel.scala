@@ -76,36 +76,26 @@ class StructuredDocumentModel[SYM](
 		     i <- 0 until numStates;
 		     u = arc.target;
 		     u_label = if (u < doc.labels.length) doc.labels(u) else null;
-		     j <- 0 until numStates
-				 if transMask.forall(_(i, j) > Double.NegativeInfinity)
 		) {
-//			val transCost_ij = arc match {
-//				// If it's a labeled arc and the label is wrong OR the arc has the special -1
-//				// ("do not label") label and the state is a valid label state...
-//				case LabeledArc(_, _, _, label) if label != -1 && label != i
-//				                                   || label == -1 && i < labelStates =>
-//					// ... then penalize arc (don't observe, effectively) for violating the labeling.
-//					Double.NegativeInfinity
-//				case LabeledArc(_, _, _, _) =>
-//					transCost(i, j)
-//				case _ =>
-//					transCost(i, j)
-//			}
+			α_u = DenseVector
+			for (j <- 0 until numStates
+				   if transMask.forall(_(i, j) > Double.NegativeInfinity)
+			) {
+				val transCost_ij =
+					if (u_label == null || j == u_label || u_label == -1 && j >= labelStates)
+						transCost(i, j)
+					else
+						Double.NegativeInfinity
 
-			val transCost_ij =
-				if (u_label == null || j == u_label || u_label == -1 && j >= labelStates)
-					transCost(i, j)
-				else
-					Double.NegativeInfinity
-
-//			println(f"$t S$i -> $u S$j: $transCost_ij")
-			val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
-			val cost = α(t, i) + transCost_ij + arcCost
-//			println(s"$t S$i -> α($u S$j) += $cost " +
-//					s"(${α(t, i)} + $transCost_ij + ${emitCostOf(i, arc.sym)} + " +
-//				     s"$arcPriorWeight * ${arc.cost})")
-			// TODO: make more efficient by doing a single softmax for each node/state pair
-			α(u, j) = softmax(α(u, j), cost)
+	//			println(f"$t S$i -> $u S$j: $transCost_ij")
+				val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
+				val cost = α(t, i) + transCost_ij + arcCost
+	//			println(s"$t S$i -> α($u S$j) += $cost " +
+	//					s"(${α(t, i)} + $transCost_ij + ${emitCostOf(i, arc.sym)} + " +
+	//				     s"$arcPriorWeight * ${arc.cost})")
+				// TODO: make more efficient by doing a single softmax for each node/state pair
+				α(u, j) = softmax(α(u, j), cost)
+			}
 		}
 
 		α
