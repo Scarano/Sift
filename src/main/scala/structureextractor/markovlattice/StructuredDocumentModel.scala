@@ -302,29 +302,31 @@ class StructuredDocumentModel[SYM](
 			model = newModel,
 			epoch = state.epoch+1,
 			prevLosses = loss::state.prevLosses,
-			metrics = SeqMap.empty
+			metrics = SeqMap.empty,
+			epochStart = System.currentTimeMillis()
 		)
 
 		val newState = hooks.foldLeft(updatedState) { (state, hook) => hook(state) }
 
-		if (state.epoch == maxEpochs)
-			return (newModel, newState)
-		newState.prevLosses match {
-			case _ :: prevLoss :: _ =>
-				val improvement = prevLoss / loss - 1
-				println(f"[epoch ${newState.epoch}] loss: $loss%.3f ($improvement%.3e); " +
-				        newState.metricsString)
-				if (abs(improvement) < tol) {
-					if (newState.strategy == FBThenViterbi)
-						newModel.train(docs, maxEpochs, tol, hooks, newState.copy(strategy=Viterbi))
-					else
-						(newModel, newState)
-				}
-				else {
-					newModel.train(docs, maxEpochs, tol, hooks, newState)
-				}
-			case _ =>
-				newModel.train(docs, maxEpochs, tol, hooks, newState)
+		val epochDuration = newState.epochStart - state.epochStart
+
+		val prevLoss = state.prevLosses.headOption.getOrElse(Double.PositiveInfinity)
+		val improvement = prevLoss / loss - 1
+
+		println(f"[epoch ${newState.epoch}; ${epochDuration/1000.0}%.3f s] " +
+			      f"loss: $loss%.3f ($improvement%.3e); " +
+		        newState.metricsString)
+		if (state.epoch == maxEpochs) {
+			(newModel, newState)
+		}
+		else if (abs(improvement) < tol) {
+			if (newState.strategy == FBThenViterbi)
+				newModel.train(docs, maxEpochs, tol, hooks, newState.copy(strategy=Viterbi))
+			else
+				(newModel, newState)
+		}
+		else {
+			newModel.train(docs, maxEpochs, tol, hooks, newState)
 		}
 	}
 
