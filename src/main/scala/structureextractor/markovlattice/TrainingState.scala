@@ -11,6 +11,7 @@ case class TrainingState[SYM] (
   epoch: Int = 0,
   prevLosses: List[Double] = Nil,
   metrics: SeqMap[String, Double] = SeqMap.empty,
+  epochStart: Long = System.currentTimeMillis()
 ) {
 
   lazy val viterbiCharts = docs.map(doc => model.viterbiChart(doc))
