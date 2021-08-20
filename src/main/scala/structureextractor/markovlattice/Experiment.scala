@@ -57,6 +57,8 @@ object Experiment {
 	                  maxArcRatio: Int = 5,
 	                  arcScoreThreshold: Double = 0.2,
 	                  alpha: Double = 1.0,
+	                  numGroups: Int = 1,
+	                  maxSkip: Int = 999,
 	                  orderPrior: Option[Double] = None,
 	                  maskCutoff: Double = 1.0,
 	                  labelCoverage: Double = 0.0,
@@ -157,6 +159,12 @@ object Experiment {
 			)
 			opt[Double]("alpha").action( (x, c) =>
 				c.copy(alpha = x)
+			)
+			opt[Int]("groups").action( (x, c) =>
+				c.copy(numGroups = x)
+			)
+			opt[Int]("max-skip").action( (x, c) =>
+				c.copy(maxSkip = x)
 			)
 			opt[Double]("order-prior").action( (x, c) =>
 				c.copy(orderPrior = Some(x))
@@ -360,8 +368,9 @@ object Experiment {
 
 		val initialModel = StructuredDocumentModel.randomInitial(
 			states, labelStates, vocab,
-			arcPriorWeight = config.arcPriorWeight, orderPrior = config.orderPrior,
-			maskCutoff = config.maskCutoff)
+			arcPriorWeight = config.arcPriorWeight,
+			numGroups = config.numGroups, maxSkip = config.maxSkip
+		)
 		val initialState = TrainingState[String](docs = docs,
 																						 model = initialModel,
 																						 strategy = config.strategy,

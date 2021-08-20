@@ -473,8 +473,7 @@ object StructuredDocumentModel {
 		uniformDistRows(1, size)(0, ::).t
 
 	def randomInitial[SYM](numStates: Int, labelStates: Int, vocab: Vocab[SYM], seed: Int = 123,
-	                       arcPriorWeight: Double = 0.0, orderPrior: Option[Double] = None,
-	                       maskCutoff: Double = 1.0)
+	                       arcPriorWeight: Double = 0.0, numGroups: Int = 1, maxSkip: Int = 999)
 	: StructuredDocumentModel[SYM] = {
 		val randBasis = RandBasis.withSeed(seed)
 //		val p_init = if (numStates == 1) DenseVector(1.0)
@@ -485,21 +484,32 @@ object StructuredDocumentModel {
 		val p_trans = randomDistRows(numStates, numStates, randBasis.uniform) * 0.1 + 0.9/numStates
 		val p_emit = randomDistRows(numStates, vocab.size, randBasis.uniform) * 0.1 + 0.9/vocab.size
 
-		val transMask = orderPrior.map { x =>
-			val rawMask = DenseMatrix.tabulate(numStates, numStates) {
-//					(i, j) => if (i == j || (i + 1) % numStates == j) 0.0 else -100.0
-					case (i, j) => -x/numStates * math.floorMod(j - i - 1, numStates).toDouble
-//					(i, j) => if (i == j || i + 1 == j || j == 0) 0.0 else -100.0
-			}
-			val maskValues = rawMask(0, ::).t.toArray.sorted.reverse
-			val threshold = maskValues((maskCutoff*numStates - 1e-7).toInt)
-			rawMask.map(m => if (m < threshold) Double.NegativeInfinity else m)
+		val groupSize = numStates / numGroups
+		val transMask = DenseMatrix.tabulate(numStates, numStates) { case (i, j) =>
+			val group = i / groupSize
+			val group2 = j / groupSize
+			val i_g = i % groupSize
+			val j_g = j % groupSize
+			val pr_reset = if (i_g == 0) 0.0 else 1.0/(groupSize - i_g)
+			if (j_g > i_g && j_g <= i_g + maxSkip && group == group2)
+				(j_g - i_g) * log((1.0 - pr_reset)/2.0)
+			else if (j_g == 0 && i_g > 0)
+				log(pr_reset / numGroups)
+			else
+				Double.NegativeInfinity
 		}
 
-		transMask.foreach(p_trans *= exp(_))
+//		for (i <- 0 until numStates) {
+//			for (j <- 0 until numStates) {
+//				print(f"${exp(transMask(i, j))}%.4f\t")
+//			}
+//			println
+//		}
+
+		p_trans *= exp(transMask)
 
 		new StructuredDocumentModel[SYM](
-			labelStates, vocab, log(p_init), log(p_trans), log(p_emit), arcPriorWeight, transMask)
+			labelStates, vocab, log(p_init), log(p_trans), log(p_emit), arcPriorWeight, Some(transMask))
 	}
 
 }
