@@ -7,6 +7,7 @@ import breeze.numerics._
 import breeze.stats.distributions.{Rand, RandBasis}
 import structureextractor.Vocab
 import structureextractor.Util.abbreviate
+import structureextractor.util.LogSum.logSum
 
 
 sealed trait TrainingStrategy
@@ -75,9 +76,9 @@ class StructuredDocumentModel[SYM](
 		     arc <- doc.arcs(t);
 		     i <- 0 until numStates;
 		     u = arc.target;
-		     u_label = if (u < doc.labels.length) doc.labels(u) else null;
+		     u_label = if (u < doc.labels.length) doc.labels(u) else null
 		) {
-			α_u = DenseVector
+//			α_u = DenseVector
 			for (j <- 0 until numStates
 				   if transMask.forall(_(i, j) > Double.NegativeInfinity)
 			) {
@@ -94,7 +95,7 @@ class StructuredDocumentModel[SYM](
 	//					s"(${α(t, i)} + $transCost_ij + ${emitCostOf(i, arc.sym)} + " +
 	//				     s"$arcPriorWeight * ${arc.cost})")
 				// TODO: make more efficient by doing a single softmax for each node/state pair
-				α(u, j) = softmax(α(u, j), cost)
+				α(u, j) = logSum(α(u, j), cost)
 			}
 		}
 
@@ -144,7 +145,7 @@ class StructuredDocumentModel[SYM](
 			val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
 			val cost = transCost_ij + arcCost + β(u, j)
 //			println(s"β($t S$i) += $cost -> $u S$j ($transCost_ij + emitCost)")
-			β(t, i) = softmax(β(t, i), cost)
+			β(t, i) = logSum(β(t, i), cost)
 		}
 
 		// γ(t, i) = Pr([state at node t = i] | doc)
