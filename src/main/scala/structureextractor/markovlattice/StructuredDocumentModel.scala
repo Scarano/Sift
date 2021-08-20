@@ -8,6 +8,7 @@ import breeze.stats.distributions.{Rand, RandBasis}
 import structureextractor.Vocab
 import structureextractor.Util.abbreviate
 import structureextractor.util.LogSum.logSum
+import structureextractor.util.qSoftmax
 
 
 sealed trait TrainingStrategy
@@ -76,27 +77,24 @@ class StructuredDocumentModel[SYM](
 		     arc <- doc.arcs(t);
 		     i <- 0 until numStates;
 		     u = arc.target;
-		     u_label = if (u < doc.labels.length) doc.labels(u) else null
+		     u_label = if (u < doc.labels.length) doc.labels(u) else null;
+			   j <- 0 until numStates
+			   if transMask.forall(_(i, j) > Double.NegativeInfinity)
 		) {
-//			α_u = DenseVector
-			for (j <- 0 until numStates
-				   if transMask.forall(_(i, j) > Double.NegativeInfinity)
-			) {
-				val transCost_ij =
-					if (u_label == null || j == u_label || u_label == -1 && j >= labelStates)
-						transCost(i, j)
-					else
-						Double.NegativeInfinity
+			val transCost_ij =
+				if (u_label == null || j == u_label || u_label == -1 && j >= labelStates)
+					transCost(i, j)
+				else
+					Double.NegativeInfinity
 
-	//			println(f"$t S$i -> $u S$j: $transCost_ij")
-				val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
-				val cost = α(t, i) + transCost_ij + arcCost
-	//			println(s"$t S$i -> α($u S$j) += $cost " +
-	//					s"(${α(t, i)} + $transCost_ij + ${emitCostOf(i, arc.sym)} + " +
-	//				     s"$arcPriorWeight * ${arc.cost})")
-				// TODO: make more efficient by doing a single softmax for each node/state pair
-				α(u, j) = logSum(α(u, j), cost)
-			}
+//			println(f"$t S$i -> $u S$j: $transCost_ij")
+			val arcCost = emitCostOf(i, arc.sym) + arcPriorWeight * arc.cost
+			val cost = α(t, i) + transCost_ij + arcCost
+//			println(s"$t S$i -> α($u S$j) += $cost " +
+//					s"(${α(t, i)} + $transCost_ij + ${emitCostOf(i, arc.sym)} + " +
+//				     s"$arcPriorWeight * ${arc.cost})")
+			// TODO: make more efficient by doing a single softmax for each node/state pair
+			α(u, j) = qSoftmax(α(u, j), cost)
 		}
 
 		α
@@ -118,7 +116,7 @@ class StructuredDocumentModel[SYM](
 		val α = forward(doc)
 
 		// Marginalize over final states to get probability of generating doc
-		val logPdoc = softmax(α(doc.finalNode, ::))
+		val logPdoc = qSoftmax(α(doc.finalNode, ::))
 //		println(s"logPdoc = $logPdoc")
 
 		val β = DenseMatrix.fill(doc.numNodes, numStates) { Double.NegativeInfinity }
@@ -150,7 +148,7 @@ class StructuredDocumentModel[SYM](
 
 		// γ(t, i) = Pr([state at node t = i] | doc)
 		val γ = α + β
-		γ(::, *) -= softmax(γ, Axis._1)
+		γ(::, *) -= qSoftmax(γ, Axis._1)
 
 		(α, β, γ, logPdoc)
 	}
@@ -187,7 +185,7 @@ class StructuredDocumentModel[SYM](
 			numNodes += doc.numNodes
 			sumLogPdoc += logPdoc
 
-			initObs := softmax(initObs, γ(0, ::).t)
+			initObs := qSoftmax(initObs, γ(0, ::).t)
 
 			for (t <- doc.nonfinalNodes;
 		       arc <- doc.arcs(t);
@@ -220,12 +218,12 @@ class StructuredDocumentModel[SYM](
 				// TODO - optimization opportunity(?): Instead of using softmax to convert back out of
 				//  log space on each iteration, just do ordinary addition here, and take the exp of the
 				//  sum after the loop.
-				transObs := softmax(transObs, ξ_tu)
+				transObs := qSoftmax(transObs, ξ_tu)
 
 				// Marginalize over destination states j to get total expected observations of this arc
 				// at position t and state i.
 
-				val arcObs = softmax(ξ_tu, Axis._1)
+				val arcObs = qSoftmax(ξ_tu, Axis._1)
 
 				// Note: That's different from textbook forward-backward! Because this is a *lattice*
 				// of observations (not a sequence, like a normal HMM), we can't just use the
@@ -236,14 +234,14 @@ class StructuredDocumentModel[SYM](
 				// TODO: I suspect there's a simpler way to compute the same quantity.
 
 				// penalize long arcs
-				emitObs(::, vocab(arc.sym)) := softmax(emitObs(::, vocab(arc.sym)), arcObs)
+				emitObs(::, vocab(arc.sym)) := qSoftmax(emitObs(::, vocab(arc.sym)), arcObs)
 			}
 		}
 
 		// Apply "temperature" by hallucinating some observations and transitions.
 		// There should always be at least some nonzero temperature to prevent numerical underflow.
-		emitObs := softmax(emitObs, DenseMatrix.fill(emitObs.rows, emitObs.cols) {temperature})
-		transObs := softmax(transObs, DenseMatrix.fill(transObs.rows, transObs.cols) {temperature})
+		emitObs := qSoftmax(emitObs, DenseMatrix.fill(emitObs.rows, emitObs.cols) {temperature})
+		transObs := qSoftmax(transObs, DenseMatrix.fill(transObs.rows, transObs.cols) {temperature})
 
 //		println("emitObs = \n" +
 //			(0 until emitObs.cols).map(v => {
@@ -257,8 +255,8 @@ class StructuredDocumentModel[SYM](
 
 		transMask.foreach(transObs += _)
 
-		val newTransCost = transObs(::, *) - softmax(transObs, Axis._1)
-		val newEmitCost = emitObs(::, *) - softmax(emitObs, Axis._1)
+		val newTransCost = transObs(::, *) - qSoftmax(transObs, Axis._1)
+		val newEmitCost = emitObs(::, *) - qSoftmax(emitObs, Axis._1)
 
 		// interpolate between old model and re-estimated model. (This is kind of like a learning
 		// rate parameter.)
@@ -267,7 +265,7 @@ class StructuredDocumentModel[SYM](
 		val newModel = new StructuredDocumentModel[SYM](
 			labelStates,
 			vocab,
-			initObs - softmax(initObs),
+			initObs - qSoftmax(initObs),
 			λ*newTransCost + (1-λ)*transCost,
 			λ*newEmitCost + (1-λ)*emitCost,
 			arcPriorWeight,
