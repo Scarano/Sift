@@ -108,6 +108,11 @@ case class ViterbiChart[SYM](
 				else
 					acc
 			val newSpan = Span(t, doc.arcMap(t, u))
+			if (acc2.isEmpty) {
+				println(f"path = $path")
+				println(f"prevState = ${prevState}")
+				println(f"firstState = ${firstState}")
+			}
 			val newHeadVec = acc2.head.updated(i, newSpan :: acc2.head(i))
 			val acc3 = newHeadVec :: acc2.tail
 			asRecords(firstState_, path.tail, i, acc3)
