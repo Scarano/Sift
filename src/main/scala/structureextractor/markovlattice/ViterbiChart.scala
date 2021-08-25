@@ -92,8 +92,40 @@ case class ViterbiChart[SYM](
 		}
 	}
 
+	/**
+		* New version - Starts new row whenever new state is lower number than prev state; every row
+		* starts at state 0.
+		*/
 	@tailrec
 	final def asRecords(
+		path: List[(Int, Int)],
+		prevState: Int = 999999,
+		acc: List[Vector[List[Span[SYM]]]] = List.empty)
+	: List[Vector[List[Span[SYM]]]] = path match {
+		case (t, i) :: (u, _) :: _ =>
+			val acc2: List[Vector[List[Span[SYM]]]] =
+				if (i < prevState)
+					Vector.fill(model.numStates) { List.empty[Span[SYM]] } :: acc
+				else
+					acc
+			val newSpan = Span(t, doc.arcMap(t, u))
+			if (acc2.isEmpty) {
+				println(f"path = $path")
+				println(f"prevState = $prevState")
+			}
+			val newHeadVec = acc2.head.updated(i, newSpan :: acc2.head(i))
+			val acc3 = newHeadVec :: acc2.tail
+			asRecords(path.tail, i, acc3)
+		case _ =>
+			acc.reverse
+	}
+
+	/**
+		* Old version - tries to be smart about both when to start a new row and which state
+		* to start at.
+		*/
+	@tailrec
+	final def asRecordsSmart(
 		firstState: Option[Int],
 		path: List[(Int, Int)],
 		prevState: Int = -1,
@@ -115,14 +147,15 @@ case class ViterbiChart[SYM](
 			}
 			val newHeadVec = acc2.head.updated(i, newSpan :: acc2.head(i))
 			val acc3 = newHeadVec :: acc2.tail
-			asRecords(firstState_, path.tail, i, acc3)
+			asRecordsSmart(firstState_, path.tail, i, acc3)
 		case _ =>
 			// Rotate fields so that first field comes first
 			val state0 = firstState.getOrElse(0)
 			acc.reverse.map { rec => rec.drop(state0) ++ rec.take(state0) }
 	}
 
-	lazy val records: List[Vector[List[Span[SYM]]]] = asRecords(None, bestPath)
+//	lazy val records: List[Vector[List[Span[SYM]]]] = asRecordsSmart(None, bestPath)
+	lazy val records: List[Vector[List[Span[SYM]]]] = asRecords(bestPath)
 
 	lazy val recordDataColumns: Vector[Int] = records match {
 		case Nil => Vector()
