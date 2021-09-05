@@ -108,6 +108,7 @@ case class ViterbiChart[SYM](
 					Vector.fill(model.numStates) { List.empty[Span[SYM]] } :: acc
 				else
 					acc
+//			println(f" ***** t = $t, i = $i, u = $u, prevState = $prevState")
 			val newSpan = Span(t, doc.arcMap(t, u))
 			if (acc2.isEmpty) {
 				println(f"path = $path")

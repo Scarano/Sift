@@ -140,7 +140,7 @@ object DocumentLattice {
 	}
 
 	def buildVocab[SYM: ClassTag](docs: Seq[DocumentLattice[SYM]],
-	                              transform: SYM => SYM = identity _) : Vocab[SYM] = {
+	                              transform: SYM => SYM = identity) : Vocab[SYM] = {
 		val syms =
 			for (doc <- docs.view;
 			     arcs <- doc.arcs;
