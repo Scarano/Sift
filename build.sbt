@@ -31,6 +31,9 @@ libraryDependencies += "org.scalanlp" %% "breeze-viz" % "1.1"
 
 libraryDependencies += "com.github.fommil.netlib" % "all" % "1.1.2" pomOnly()
 
+// https://mvnrepository.com/artifact/org.jsoup/jsoup
+libraryDependencies += "org.jsoup" % "jsoup" % "1.14.2"
+
 
 mainClass in (Compile, run) := Some("structureextractor.markovlattice.Experiment")
 
